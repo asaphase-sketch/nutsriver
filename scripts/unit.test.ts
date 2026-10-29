@@ -588,3 +588,212 @@ describe('engine chip conservation', () => {
     expect(trailWins).toBe(3200)
   })
 })
+
+// ---------- betting rules & payout integrity (deterministic, dealer-pinned) ----------
+
+// White-box helpers: deck/dealerSeat are engine internals, poked via casts so
+// production code carries no test hooks. startMs is huge and the hand starts
+// through the PUBLIC drain() API, which makes hole-card injection race-free
+// (holes are popped inside startHand from our injected deck).
+
+const deckFromPops = (pops: string[]) => [...pops].reverse().map((c) => parseCard(c))
+
+type ScriptStep =
+  | { seat: number; type: 'fold' | 'check' | 'call' | 'bet' | 'raise'; amount?: number }
+  | { assert: (o: NonNullable<ReturnType<PokerTable['snapshotFor']>['selfOptions']>, table: PokerTable) => void }
+
+function rulesTable(stacks: number[], cfg: Partial<TableConfig> = {}) {
+  const summaries: HandSummary[] = []
+  const table = new PokerTable(
+    {
+      key: 't:rules',
+      name: 'Rules',
+      smallBlind: 10,
+      bigBlind: 20,
+      maxSeats: 6,
+      minBuyIn: 10,
+      maxBuyIn: 10_000,
+      botCount: 0,
+      ...cfg,
+    },
+    { onChange: () => {}, onHandFinished: (s) => summaries.push(s), onCashOut: () => {} },
+    { actionMs: 5_000, showdownMs: 20, awardMs: 20, streetMs: 10, startMs: 60_000 },
+  )
+  stacks.forEach((s, i) => table.sitDown(`t:p${i}`, `P${i}`, i, s))
+  const inner = table as unknown as { dealerSeat: number; deck: number[] }
+  // startHand keeps dealerSeat only when that seat is ELIGIBLE (occupied),
+  // then advances the button to the next eligible seat — so pinning the
+  // seat just before the wanted button puts the button exactly there.
+  const pinButton = (seat: number) => {
+    inner.dealerSeat = (seat - 1 + stacks.length) % stacks.length
+  }
+  const startHand = () => table.drain(Date.now() + 60_000)
+  const injectPops = (pops: string[]) => {
+    inner.deck = deckFromPops(pops)
+  }
+  /** run one hand through an exact action queue; assert steps read the ACTOR's options */
+  const play = async (script: ScriptStep[]) => {
+    let i = 0
+    const deadline = Date.now() + 10_000
+    while (summaries.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2))
+      const actor = table.snapshotFor(null).actorUserId
+      if (!actor) continue
+      const actorSeat = Number(actor.split('p')[1])
+      const step = script[i]
+      if (!step) continue
+      if ('assert' in step) {
+        const o = table.snapshotFor(actor).selfOptions
+        if (!o) continue // wait until this seat actually holds the action
+        step.assert(o, table)
+        i++
+        continue
+      }
+      if (step.seat !== actorSeat) {
+        throw new Error(`script out of sync: expected seat ${step.seat} to act, but seat ${actorSeat} holds the action`)
+      }
+      const err = table.applyAction(actor, step.type, step.amount)
+      if (err !== null) throw new Error(`action rejected (seat ${step.seat} ${step.type} ${step.amount ?? ''}): ${err}`)
+      i++
+    }
+    if (summaries.length === 0) throw new Error('hand never finished (deadline)')
+  }
+  return { table, summaries, pinButton, startHand, injectPops, play }
+}
+
+describe('betting rules & payout integrity', () => {
+  test('odd chip goes to the first hand LEFT of the button (dead-money pot)', async () => {
+    // UTG P3 raises 60, button P0 calls, SB P1 folds (dead 10), BB P2 is
+    // all-in for 45. A royal flush lands on the board — everyone ties
+    // regardless of hole cards. Pots: main 145 (45×3 + 10 dead — ODD,
+    // split 48/48/48 + 1), side 30 (15×2). The odd chip belongs to the
+    // first hand LEFT of the button = P2; the button ranks LAST. Fix-less
+    // behavior would hand it to the button (seatDistance 0 sorts first).
+    const { table, summaries, pinButton, startHand, injectPops, play } = rulesTable([2000, 2000, 45, 2000])
+    pinButton(0) // button 0, SB 1, BB 2, UTG 3
+    startHand() // holes are popped from a random deck inside startHand
+    // board (pop order): flop Ts Js Qs, turn Ks, river As — deck is popped from the END
+    injectPops(['Ts', 'Js', 'Qs', 'Ks', 'As'])
+    await play([
+      { seat: 3, type: 'raise', amount: 60 },
+      { seat: 0, type: 'call' },
+      { seat: 1, type: 'fold' }, // dead 10 in the main pot
+      { seat: 2, type: 'call' }, // BB all-in for 45 total
+      { seat: 3, type: 'check' },
+      { seat: 0, type: 'check' },
+      { seat: 3, type: 'check' },
+      { seat: 0, type: 'check' },
+      { seat: 3, type: 'check' },
+      { seat: 0, type: 'check' },
+    ])
+    table.destroy()
+    expect(summaries.length).toBe(1)
+    const s = summaries[0]
+    expect(s.potTotal).toBe(175) // 60 + 10 + 45 + 60
+    const wins = Object.fromEntries(s.results.map((r) => [r.userId, r.amount]))
+    expect(wins['t:p2']).toBe(49) // BB — first left of the button: 48 + 1 odd chip
+    expect(wins['t:p0']).toBe(63) // button: 48 + side pot 15
+    expect(wins['t:p3']).toBe(63) // UTG: 48 + side pot 15
+    expect(wins['t:p1']).toBeUndefined()
+    const trailWins = s.trail.filter((a) => a.act === 'win').reduce((a, x) => a + (x.amt ?? 0), 0)
+    expect(trailWins).toBe(175)
+  })
+
+  test('incomplete all-in raise: no re-raise for acted players — enforced engine-side', async () => {
+    // Button seat0 raises 60, SB seat1 folds, BB seat2 (90 stack) is all-in
+    // for 90 — under the min raise (100). seat0 has acted: may call 30, must
+    // NOT be able to raise (the UI guard alone was exploitable by a crafted
+    // client). Then the hand runs out and chips conserve.
+    const { table, summaries, pinButton, startHand, play } = rulesTable([2000, 2000, 90])
+    pinButton(0) // button 0, SB 1, BB 2
+    startHand()
+    await play([
+      { seat: 0, type: 'raise', amount: 60 },
+      { seat: 1, type: 'fold' },
+      { seat: 2, type: 'raise', amount: 90 }, // all-in under the min raise
+      {
+        assert: (o, t) => {
+          expect(o.canRaise).toBe(false)
+          expect(o.canCall).toBe(true)
+          expect(o.callAmount).toBe(30)
+          // server-side enforcement: an illegal raise must be rejected
+          expect(t.applyAction('t:p0', 'raise', 150)).toBeString()
+        },
+      },
+      { seat: 0, type: 'call' },
+    ])
+    table.destroy()
+    expect(summaries.length).toBe(1)
+    const s = summaries[0]
+    const committed = s.participants.reduce((a, p) => a + p.committed, 0)
+    expect(committed).toBe(190) // 90 + 10 dead SB + 90
+    expect(s.potTotal).toBe(190)
+    expect(s.results.reduce((a, r) => a + r.amount, 0)).toBe(190)
+    const allIn = s.trail.find((a) => a.act === 'raise' && a.amt === 90)
+    expect(allIn?.ai).toBe(true)
+  })
+
+  test('full raise after an incomplete all-in reopens betting', async () => {
+    // UTG seat2 raises 60, dealer seat3 calls, SB seat0 (90) all-in for 90
+    // (incomplete). BB seat1 (has NOT acted) may still raise — and his FULL
+    // raise to 150 reopens action: seat2 gets raise rights back (and the
+    // engine must accept his 240 re-raise).
+    const { table, summaries, pinButton, startHand, play } = rulesTable([90, 2000, 2000, 2000])
+    pinButton(3) // button 3, SB 0, BB 1, first actor UTG seat2
+    startHand()
+    await play([
+      { seat: 2, type: 'raise', amount: 60 },
+      { seat: 3, type: 'call' },
+      { seat: 0, type: 'raise', amount: 90 }, // all-in, incomplete (minTo was 100)
+      { assert: (o) => expect(o.canRaise).toBe(true) }, // BB hasn't acted — open to him
+      { seat: 1, type: 'raise', amount: 150 }, // FULL raise → reopens betting
+      {
+        assert: (o, t) => {
+          expect(o.canRaise).toBe(true) // seat2's rights are back
+          expect(t.applyAction('t:p2', 'raise', 240)).toBeNull()
+        },
+      },
+      { seat: 3, type: 'fold' },
+      { seat: 1, type: 'call' }, // 240 − 150
+      // flop/turn/river: P1 (first left of the all-in button... seat order)
+      // and P2 check it down — P0 is all-in, P3 folded
+      { seat: 1, type: 'check' },
+      { seat: 2, type: 'check' },
+      { seat: 1, type: 'check' },
+      { seat: 2, type: 'check' },
+      { seat: 1, type: 'check' },
+      { seat: 2, type: 'check' },
+    ])
+    table.destroy()
+    expect(summaries.length).toBe(1)
+    const s = summaries[0]
+    const committed = s.participants.reduce((a, p) => a + p.committed, 0)
+    expect(committed).toBe(630) // 90 + 240 + 240 + 60 dead
+    expect(s.potTotal).toBe(630)
+    expect(s.results.reduce((a, r) => a + r.amount, 0)).toBe(630)
+  })
+
+  test('short-stacked BB: callers match the posted bet, not the nominal blind', async () => {
+    // BB has 15 → posts 15 all-in. SB (30) must be offered Call 5 (the real
+    // number) — previously currentBet stayed at the nominal 20 and callers
+    // overpaid then waited on a refund.
+    const { table, summaries, pinButton, startHand, play } = rulesTable([30, 15])
+    pinButton(0)
+    startHand()
+    await play([
+      {
+        assert: (o) => {
+          expect(o.canCall).toBe(true)
+          expect(o.callAmount).toBe(5)
+        },
+      },
+      { seat: 0, type: 'call' },
+    ])
+    table.destroy()
+    expect(summaries.length).toBe(1)
+    const s = summaries[0]
+    expect(s.potTotal).toBe(30)
+    expect(s.board.length).toBe(5) // all-in preflop → board runs out
+    expect(s.trail.some((a) => a.act === 'refund')).toBe(false)
+  })
+})

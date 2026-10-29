@@ -496,7 +496,10 @@ export class PokerTable {
     }
     this.postBlind(this.seats[this.sbSeat]!, this.cfg.smallBlind, 'small blind')
     this.postBlind(this.seats[this.bbSeat]!, this.cfg.bigBlind, 'big blind')
-    this.currentBet = this.cfg.bigBlind
+    // A short-stacked BB posted less than the big blind — the live bet is
+    // what he actually posted, not the nominal blind, so callers match the
+    // real number (no phantom toCall, no post-hoc refund of the difference).
+    this.currentBet = Math.min(this.cfg.bigBlind, this.seats[this.bbSeat]!.bet)
     this.minRaise = this.cfg.bigBlind
 
     const first = this.nextActorSeat(this.bbSeat)
@@ -596,6 +599,12 @@ export class PokerTable {
         let target = Math.floor(amount ?? 0)
         if (target > maxTo) target = maxTo
         const isAllIn = target === maxTo
+        // An incomplete all-in raise does NOT reopen betting (PokerStars/TDA
+        // rule): a player who has already acted may only call or fold. The
+        // UI guard in selfOptions is not enough — enforce it server-side so
+        // a crafted client cannot illegally re-raise over a short all-in.
+        if (this.lastRaiseIncomplete && p.hasActed)
+          return 'Betting was not reopened — call or fold'
         const minTo = this.currentBet === 0 ? this.cfg.bigBlind : this.currentBet + this.minRaise
         if (target < minTo && !isAllIn)
           return `Minimum is ${minTo}`
@@ -871,8 +880,15 @@ export class PokerTable {
       }
       const share = Math.floor(pot.amount / best.length)
       let remainder = pot.amount - share * best.length
-      // remainder chips go to earliest position left of the dealer
-      const ordered = [...best].sort((a, b) => this.seatDistance(a.seatIndex) - this.seatDistance(b.seatIndex))
+      // Odd chips go to the first hand LEFT of the button (PokerStars / TDA
+      // rule). seatDistance ranks the dealer 0 — first — which would hand the
+      // odd chip to the BUTTON whenever he is part of the split (heads-up
+      // chops), so rank the dealer LAST instead.
+      const oddRank = (p: SeatPlayer) => {
+        const d = this.seatDistance(p.seatIndex)
+        return d === 0 ? this.cfg.maxSeats : d
+      }
+      const ordered = [...best].sort((a, b) => oddRank(a) - oddRank(b))
       // per-pot share (NOT cumulative across pots) for the trail's win steps
       const potShare = new Map<string, number>()
       for (const p of ordered) {
