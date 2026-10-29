@@ -269,3 +269,296 @@ describe('card codec', () => {
     expect(seen.size).toBe(52)
   })
 })
+
+
+// ---------- hand trail + replayer state machine ----------
+
+import { PokerTable } from '../src/lib/poker-engine/engine'
+import type { HandSummary, HandTrailAction, TableConfig } from '../src/lib/poker-engine/types'
+import { buildReplayStates, replayNets, type ReplayParticipant } from '../src/lib/poker/replay'
+
+const TRAIL_CFG: TableConfig = {
+  key: 't:trailtest',
+  name: 'TrailTest',
+  smallBlind: 10,
+  bigBlind: 20,
+  maxSeats: 6,
+  minBuyIn: 1000,
+  maxBuyIn: 2000,
+  botCount: 0,
+}
+
+/** Drive one real engine hand: 'fold' = everyone folds (fold-win), 'call' = all call/check to showdown. */
+async function playHand(policy: 'fold' | 'call'): Promise<HandSummary> {
+  const summaries: HandSummary[] = []
+  const table = new PokerTable(
+    TRAIL_CFG,
+    {
+      onChange: () => {
+        if (policy !== 'call') return
+        const actorId = table.snapshotFor(null).actorUserId
+        // selfOptions are viewer-scoped — read them as the acting player
+        const opts = actorId ? table.snapshotFor(actorId).selfOptions : null
+        if (!actorId || !opts) return
+        if (opts.canCheck) table.applyAction(actorId, 'check')
+        else if (opts.canCall) table.applyAction(actorId, 'call')
+      },
+      onHandFinished: (s) => summaries.push(s),
+      onCashOut: () => {},
+    },
+    { actionMs: 20, showdownMs: 20, awardMs: 20, streetMs: 10, startMs: 10 },
+  )
+  for (let i = 0; i < 3; i++) table.sitDown(`t:${i}`, `Player${i}`, i, 1000)
+  const deadline = Date.now() + 10_000
+  while (summaries.length === 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5))
+    if (policy === 'fold') {
+      const snap = table.snapshotFor(null)
+      if (snap.actorUserId && snap.selfOptions) table.applyAction(snap.actorUserId, 'fold')
+    }
+  }
+  table.destroy()
+  expect(summaries.length).toBeGreaterThanOrEqual(1)
+  return summaries[0]
+}
+
+function noHoleCardsInTrail(s: HandSummary) {
+  // desc strings are public showdown hand names ("Pair of Kings") and may
+  // legitimately contain rank+suit words — strip them before the leak check
+  const trailJson = JSON.stringify(s.trail.map(({ desc, ...rest }) => rest))
+  for (const p of s.participants) {
+    for (const c of p.cards ?? []) {
+      // engine cards are numeric — compare as public 2-char codes
+      const code = typeof c === 'number' ? cardCode(c) : String(c)
+      expect(trailJson).not.toContain(code)
+    }
+  }
+}
+
+describe('engine hand trail', () => {
+  test('fold-win hand: posts first, single win == potTotal, no hole cards leaked', async () => {
+    const s = await playHand('fold')
+    const t = s.trail
+    expect(t.length).toBeGreaterThanOrEqual(4)
+    // sequence numbers strictly increase from 1
+    t.forEach((a, i) => expect(a.n).toBe(i + 1))
+    // two blind posts open the hand
+    expect(t[0].act).toBe('post')
+    expect(t[1].act).toBe('post')
+    expect(t[0].street).toBe('PREFLOP')
+    // exactly one win, equal to the pot, and it closes the trail
+    const wins = t.filter((a) => a.act === 'win')
+    expect(wins.length).toBe(1)
+    expect(wins[0].amt).toBe(s.potTotal)
+    expect(t[t.length - 1].act).toBe('win')
+    expect(wins[0].street).toBe('SHOWDOWN')
+    noHoleCardsInTrail(s)
+  })
+
+  test('showdown hand: deal steps 3/1/1 build the board, win shares sum to pot', async () => {
+    const s = await playHand('call')
+    const t = s.trail
+    expect(t.length).toBeGreaterThanOrEqual(10)
+    const deals = t.filter((a) => a.act === 'deal')
+    expect(deals.map((d) => d.cards?.length ?? 0)).toEqual([3, 1, 1])
+    expect(deals.map((d) => d.street)).toEqual(['FLOP', 'TURN', 'RIVER'])
+    // board reconstruction matches the stored board exactly
+    const board = deals.flatMap((d) => d.cards ?? [])
+    expect(board).toEqual(s.board.map(cardCode))
+    // only valid acts ever appear
+    for (const a of t) expect(['post', 'fold', 'check', 'call', 'bet', 'raise', 'deal', 'refund', 'win']).toContain(a.act)
+    // showdown wins: one or more shares, summing exactly to the pot
+    const wins = t.filter((a) => a.act === 'win')
+    expect(wins.length).toBeGreaterThanOrEqual(1)
+    expect(wins.reduce((x, w) => x + (w.amt ?? 0), 0)).toBe(s.potTotal)
+    // winners in the trail match the results payload
+    const wonByName = new Map<string, number>()
+    for (const w of wins) wonByName.set(w.who!, (wonByName.get(w.who!) ?? 0) + (w.amt ?? 0))
+    for (const r of s.results) expect(wonByName.get(r.name)).toBe(r.amount)
+    noHoleCardsInTrail(s)
+  })
+})
+
+describe('replay state machine', () => {
+  const P = (name: string, committed: number, cards?: string[]): ReplayParticipant => ({ userId: `u:${name}`, name, committed, cards })
+
+  test('raise-to semantics, street collection, refund direction, board build, pot drain', () => {
+    // Button=Ana, SB=Bob (10), BB=Cy (20). Ana raises to 60, both call. Flop:
+    // Bob checks, Ana bets 100, Cy calls 40 all-in, Bob folds → uncalled 60
+    // goes BACK to Ana on the street transition. Pot = 60+60+60 + 40+40 = 260.
+    const participants = [P('Ana', 100, ['As', 'Ad']), P('Bob', 60), P('Cy', 100, ['Kh', 'Kd'])]
+    const trail: HandTrailAction[] = [
+      { n: 1, street: 'PREFLOP', act: 'post', who: 'Bob', amt: 10 },
+      { n: 2, street: 'PREFLOP', act: 'post', who: 'Cy', amt: 20 },
+      { n: 3, street: 'PREFLOP', act: 'raise', who: 'Ana', amt: 60 },
+      { n: 4, street: 'PREFLOP', act: 'call', who: 'Bob', amt: 50 },
+      { n: 5, street: 'PREFLOP', act: 'call', who: 'Cy', amt: 40 },
+      { n: 6, street: 'FLOP', act: 'deal', cards: ['2h', '7c', 'Ad'] },
+      { n: 7, street: 'FLOP', act: 'check', who: 'Bob' },
+      { n: 8, street: 'FLOP', act: 'bet', who: 'Ana', amt: 100 },
+      { n: 9, street: 'FLOP', act: 'call', who: 'Cy', amt: 40, ai: true },
+      { n: 10, street: 'FLOP', act: 'fold', who: 'Bob' },
+      { n: 11, street: 'TURN', act: 'refund', who: 'Ana', amt: 60 },
+      { n: 12, street: 'TURN', act: 'deal', cards: ['9s'] },
+      { n: 13, street: 'SHOWDOWN', act: 'win', who: 'Ana', amt: 260, desc: 'Three of a Kind, Aces' },
+    ]
+
+    const states = buildReplayStates(participants, trail)
+    expect(states.length).toBe(14) // step 0 + 13 actions
+    // step 0: nothing has happened
+    expect(states[0].pot).toBe(0)
+    expect(states[0].board).toEqual([])
+    // preflop raise-to is a TOTAL, not incremental
+    expect(states[3].seats.find((x) => x.name === 'Ana')!.streetBet).toBe(60)
+    // flop deal collects preflop chips: 60×3 → pot 180, street bets cleared
+    const flop = states[6]
+    expect(flop.pot).toBe(180)
+    expect(flop.board).toEqual(['2h', '7c', 'Ad'])
+    expect(flop.seats.every((x) => x.streetBet === 0)).toBe(true)
+    // Cy is only all-in AFTER the flop call (step 9), not at the flop deal
+    expect(states[9].seats.find((x) => x.name === 'Cy')!.allIn).toBe(true)
+    // turn deal collects flop action: Ana 40 (100−60 refund) + Cy 40 → pot 260
+    expect(states[12].pot).toBe(260)
+    expect(states[12].seats.find((x) => x.name === 'Ana')!.streetBet).toBe(0)
+    // win drains pot to zero and marks the winner
+    const fin = states[13]
+    expect(fin.pot).toBe(0)
+    expect(fin.finished).toBe(true)
+    const ana = fin.seats.find((x) => x.name === 'Ana')!
+    expect(ana.winner).toBe(true)
+    expect(ana.won).toBe(260)
+    expect(fin.board).toEqual(['2h', '7c', 'Ad', '9s'])
+    // nets use participants' committed as ground truth and must sum to zero
+    const nets = replayNets(participants, trail)
+    expect([...nets.values()].reduce((a, b) => a + b, 0)).toBe(0)
+    expect(nets.get('u:Ana')).toBe(260 - 100)
+    expect(nets.get('u:Bob')).toBe(-60)
+    expect(nets.get('u:Cy')).toBe(-100)
+  })
+
+  test('side pots: multiple win steps drain the pot share by share', () => {
+    // Ana jams 100, Bob calls, Cy raises to 200, Bob calls 100 more.
+    // Main pot (level 100) = 300, side pot (level 200) = 200. Total 500.
+    const participants = [P('Ana', 100), P('Bob', 200), P('Cy', 200)]
+    const trail: HandTrailAction[] = [
+      { n: 1, street: 'PREFLOP', act: 'post', who: 'Bob', amt: 10 },
+      { n: 2, street: 'PREFLOP', act: 'post', who: 'Cy', amt: 20 },
+      { n: 3, street: 'PREFLOP', act: 'raise', who: 'Ana', amt: 100, ai: true },
+      { n: 4, street: 'PREFLOP', act: 'call', who: 'Bob', amt: 90 },
+      { n: 5, street: 'PREFLOP', act: 'raise', who: 'Cy', amt: 200 },
+      { n: 6, street: 'PREFLOP', act: 'call', who: 'Bob', amt: 100 },
+      { n: 7, street: 'SHOWDOWN', act: 'win', who: 'Cy', amt: 300, desc: 'Pair of Nines' },
+      { n: 8, street: 'SHOWDOWN', act: 'win', who: 'Bob', amt: 200, desc: 'Pair of Sevens' },
+    ]
+    const states = buildReplayStates(participants, trail)
+    expect(states.length).toBe(9)
+    // after the first win the remaining side pot is still up
+    expect(states[7].pot).toBe(200)
+    const fin = states[8]
+    expect(fin.pot).toBe(0)
+    expect(fin.finished).toBe(true)
+    expect(fin.seats.find((x) => x.name === 'Cy')!.won).toBe(300)
+    expect(fin.seats.find((x) => x.name === 'Bob')!.won).toBe(200)
+    const nets = replayNets(participants, trail)
+    expect([...nets.values()].reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
+  test('fold-win phantom winner absent from participants still renders and drains', () => {
+    // SB posts 10, BB posts 20, SB folds → uncalled 20 returns to BB, BB wins SB's 10.
+    // buildParticipants drops BB (committed 0 post-refund) — the replayer must
+    // synthesize a phantom seat from the trail.
+    const participants = [P('Sb', 10)]
+    const trail: HandTrailAction[] = [
+      { n: 1, street: 'PREFLOP', act: 'post', who: 'Sb', amt: 10 },
+      { n: 2, street: 'PREFLOP', act: 'post', who: 'Bb', amt: 20 },
+      { n: 3, street: 'PREFLOP', act: 'fold', who: 'Sb' },
+      { n: 4, street: 'PREFLOP', act: 'refund', who: 'Bb', amt: 20 },
+      { n: 5, street: 'SHOWDOWN', act: 'win', who: 'Bb', amt: 10 },
+    ]
+    const states = buildReplayStates(participants, trail)
+    const fin = states[5]
+    const bb = fin.seats.find((x) => x.name === 'Bb')
+    expect(bb).toBeDefined()
+    expect(bb!.winner).toBe(true)
+    expect(bb!.won).toBe(10)
+    expect(fin.pot).toBe(0)
+  })
+
+  test('malformed trail never crashes — steps are skipped gracefully', () => {
+    const junk = [
+      { n: 1, street: 'PREFLOP', act: 'raise' }, // missing who
+      { n: 2, street: 'FLOP', act: 'bet', who: 'Ghost', amt: -5 }, // unknown seat
+      { n: 0, street: 'RIVER', act: 'win', who: 'Ana', amt: 10 }, // out-of-order n
+    ] as unknown as HandTrailAction[]
+    const states = buildReplayStates([P('Ana', 0)], junk)
+    expect(states.length).toBeGreaterThanOrEqual(1)
+    for (const st of states) {
+      expect(st.pot).toBeGreaterThanOrEqual(0)
+      for (const s of st.seats) expect(s.streetBet).toBeGreaterThanOrEqual(0)
+    }
+  })
+})
+
+// ---------- engine chip conservation: dead money must never burn ----------
+
+describe('engine chip conservation', () => {
+  test('folder committing above every alive player: refund capped by dead bet, chips conserve', async () => {
+    // Acting order (any button, equal stacks): UTG raises 800, two players
+    // call, BB re-raises (min-raise ≥1580; exactly 1580), UTG FOLDS his 800
+    // (dead money), the two callers FOLD too. The re-raiser is refunded to
+    // the folder's dead 800 (refund 780) — regression guard: the refund used
+    // to ignore folders' bets and would have returned 1580−800=780 wrongly as
+    // the full 1580, over-crediting the re-raiser and starving the pot. The
+    // showdown side-pot burn is fuzz-guarded by the committed==pot invariant
+    // in sim.ts across thousands of random hands.
+    const queue: Array<{ type: 'fold' | 'check' | 'call' | 'bet' | 'raise'; amount?: number }> = [
+      { type: 'raise', amount: 800 },
+      { type: 'call' },
+      { type: 'call' },
+      { type: 'raise', amount: 1580 },
+      { type: 'fold' },
+      { type: 'fold' },
+      { type: 'fold' },
+    ]
+    const summaries: HandSummary[] = []
+    // actionMs is raised so the auto-fold clock can never outrun the script
+    const table = new PokerTable(
+      { key: 't:dead', name: 'DeadMoney', smallBlind: 10, bigBlind: 20, maxSeats: 4, minBuyIn: 200, maxBuyIn: 2000, botCount: 0 },
+      {
+        onChange: () => {},
+        onHandFinished: (s) => summaries.push(s),
+        onCashOut: () => {},
+      },
+      { actionMs: 5_000, showdownMs: 20, awardMs: 20, streetMs: 10, startMs: 10 },
+    )
+    for (let i = 0; i < 4; i++) table.sitDown(`t:${i}`, `P${i}`, i, 2000)
+    const deadline = Date.now() + 10_000
+    while (summaries.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5))
+      const actorId = table.snapshotFor(null).actorUserId
+      const next = queue[0]
+      if (!actorId || !next) continue
+      const err = table.applyAction(actorId, next.type, next.amount)
+      if (err === null) queue.shift()
+      else throw new Error(`script action rejected (${actorId}): ${next.type} ${next.amount ?? ''}: ${err}`)
+    }
+    table.destroy()
+    expect(summaries.length).toBeGreaterThanOrEqual(1)
+    const s = summaries[0]
+    // the re-raiser is refunded down to the folder's dead 800 (1580 − 800)
+    const bigRaise = s.trail.find((a) => a.act === 'raise' && a.amt === 1580)
+    expect(bigRaise).toBeDefined()
+    const refund = s.trail.find((a) => a.act === 'refund')
+    expect(refund?.amt).toBe(780)
+    expect(refund?.who).toBe(bigRaise!.who)
+    // conservation: committed chips == pot == awarded == trail wins
+    // all four players end committed at exactly 800 → 3200
+    const committed = s.participants.reduce((a, p) => a + p.committed, 0)
+    expect(committed).toBe(3200)
+    expect(s.potTotal).toBe(3200)
+    const awarded = s.results.reduce((a, r) => a + r.amount, 0)
+    expect(awarded).toBe(3200)
+    const trailWins = s.trail.filter((a) => a.act === 'win').reduce((a, x) => a + (x.amt ?? 0), 0)
+    expect(trailWins).toBe(3200)
+  })
+})

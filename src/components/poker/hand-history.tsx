@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, History, RefreshCw } from 'lucide-react'
+import { ChevronRight, History, Play, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips } from '@/lib/poker/cards'
 import type { ClientTableView } from '@/lib/poker/types'
@@ -20,6 +20,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { PlayingCard } from './playing-card'
+import { HandReplayer } from './hand-replayer'
+import type { HandTrailAction } from '@/lib/poker-engine/types'
 
 interface HandRow {
   id: string
@@ -43,6 +45,7 @@ interface HandDetail {
   results: { userId: string; name: string; amount: number; desc: string; cards: string[] }[]
   participants: { userId: string; name: string; committed: number; cards?: string[] }[]
   log: string[]
+  trail?: HandTrailAction[]
   at: number
   showdown: boolean
 }
@@ -216,15 +219,17 @@ export function HandHistoryPanel({ view }: { view: ClientTableView }) {
         )}
       </ScrollArea>
 
-      {selected && <HandViewerDialog hand={selected} onClose={() => setSelected(null)} />}
+      {selected && <HandViewerDialog view={view} hand={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
 
-function HandViewerDialog({ hand, onClose }: { hand: HandDetail; onClose: () => void }) {
+function HandViewerDialog({ view, hand, onClose }: { view: ClientTableView; hand: HandDetail; onClose: () => void }) {
   const board = hand.board ? hand.board.split(' ').filter(Boolean) : []
   const results = Array.isArray(hand.results) ? hand.results : []
   const participants = Array.isArray(hand.participants) ? hand.participants : []
+  const [replaying, setReplaying] = useState(false)
+  const canReplay = Array.isArray(hand.trail) && hand.trail.length > 0
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -237,6 +242,15 @@ function HandViewerDialog({ hand, onClose }: { hand: HandDetail; onClose: () => 
             {timeAgo(hand.at)}
             {hand.showdown ? ' · showdown — all revealed cards shown' : ' · ended by folds — opponents’ cards stay hidden'}
           </p>
+          {canReplay && (
+            <Button
+              size="sm"
+              onClick={() => setReplaying(true)}
+              className="mt-2 h-9 rounded-full bg-emerald-500/90 text-white hover:bg-emerald-500"
+            >
+              <Play className="mr-1.5 h-4 w-4" /> Watch replay
+            </Button>
+          )}
         </DialogHeader>
 
         {/* board */}
@@ -345,6 +359,12 @@ function HandViewerDialog({ hand, onClose }: { hand: HandDetail; onClose: () => 
           </section>
         )}
       </DialogContent>
+      {replaying && (
+        <HandReplayer
+          hand={{ ...hand, myUserId: view.seats.find((s) => s.isSelf)?.userId ?? null }}
+          onClose={() => setReplaying(false)}
+        />
+      )}
     </Dialog>
   )
 }

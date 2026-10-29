@@ -9,7 +9,7 @@
  * Hand recording is batched into a single D1 round-trip (free-tier friendly).
  */
 import { cardCode } from '../src/lib/poker-engine/cards'
-import type { TournamentConfig } from '../src/lib/poker-engine/types'
+import type { HandTrailAction, TournamentConfig } from '../src/lib/poker-engine/types'
 
 export type UserRole = 'player' | 'admin'
 
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS HandHistory (
   board TEXT NOT NULL,
   potTotal INTEGER NOT NULL,
   results TEXT NOT NULL,
+  trail TEXT NOT NULL DEFAULT '[]',
   at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_hand_table ON HandHistory (tableKey, handNumber);
@@ -99,6 +100,7 @@ const MIGRATIONS: string[] = [
   'ALTER TABLE User ADD COLUMN banned INTEGER NOT NULL DEFAULT 0',
   "ALTER TABLE HandHistory ADD COLUMN log TEXT NOT NULL DEFAULT '[]'",
   "ALTER TABLE HandHistory ADD COLUMN participants TEXT NOT NULL DEFAULT '[]'",
+  "ALTER TABLE HandHistory ADD COLUMN trail TEXT NOT NULL DEFAULT '[]'",
   'CREATE INDEX IF NOT EXISTS idx_tx_at ON ChipTransaction (at)',
   'CREATE INDEX IF NOT EXISTS idx_hand_at ON HandHistory (at)',
 ]
@@ -557,6 +559,7 @@ export interface PlayerHandDetail {
   results: { userId: string; name: string; amount: number; desc: string; cards: string[] }[]
   participants: { userId: string; name: string; committed: number; cards?: string[] }[]
   log: string[]
+  trail: HandTrailAction[]
   at: number
   showdown: boolean
 }
@@ -569,7 +572,7 @@ export interface PlayerHandDetail {
  */
 export async function getPlayerHand(db: D1Database, id: string, userId: string): Promise<PlayerHandDetail | null> {
   const row = await db
-    .prepare('SELECT id, tableKey, handNumber, board, potTotal, results, participants, log, at FROM HandHistory WHERE id = ?')
+    .prepare('SELECT id, tableKey, handNumber, board, potTotal, results, participants, log, trail, at FROM HandHistory WHERE id = ?')
     .bind(id)
     .first<any>()
   if (!row) return null
@@ -591,6 +594,20 @@ export async function getPlayerHand(db: D1Database, id: string, userId: string):
   } catch {
     if (typeof row.log === 'string' && row.log.length) log = row.log.split('\n')
   }
+  // defensive shape-check: only well-formed public action objects survive
+  const VALID_ACTS = new Set(['post', 'fold', 'check', 'call', 'bet', 'raise', 'deal', 'refund', 'win'])
+  let trail: HandTrailAction[] = []
+  try {
+    const parsed = typeof row.trail === 'string' ? (JSON.parse(row.trail) as unknown) : []
+    if (Array.isArray(parsed)) {
+      trail = parsed.filter(
+        (a): a is HandTrailAction =>
+          !!a && typeof a === 'object' && typeof (a as any).n === 'number' && VALID_ACTS.has((a as any).act),
+      )
+    }
+  } catch {
+    /* legacy row without a trail — empty is fine */
+  }
   const showdown = results.some((r) => r.desc && r.desc !== FOLD_WIN_DESC)
   return {
     id: row.id,
@@ -610,6 +627,7 @@ export async function getPlayerHand(db: D1Database, id: string, userId: string):
       }
     }),
     log,
+    trail,
     at: row.at,
     showdown,
   }
@@ -767,6 +785,7 @@ export async function recordHand(
     results: { userId: string; name: string; amount: number; desc: string; cards: number[] }[]
     participants: { userId: string; name: string; committed: number; cards?: number[] }[]
     log?: string[]
+    trail?: HandTrailAction[]
   },
 ) {
   try {
@@ -779,7 +798,7 @@ export async function recordHand(
     }))
     stmts.push(
       db
-        .prepare('INSERT INTO HandHistory (id, tableKey, handNumber, board, potTotal, results, participants, log, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .prepare('INSERT INTO HandHistory (id, tableKey, handNumber, board, potTotal, results, participants, log, trail, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(
           UUID(),
           summary.tableKey,
@@ -789,6 +808,7 @@ export async function recordHand(
           JSON.stringify(summary.results),
           JSON.stringify(participants),
           JSON.stringify(summary.log ?? []),
+          JSON.stringify(summary.trail ?? []),
           Date.now(),
         ),
     )

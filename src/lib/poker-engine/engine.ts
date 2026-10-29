@@ -3,6 +3,7 @@ import type {
   ClientPlayerView,
   ClientTableView,
   HandSummary,
+  HandTrailAction,
   LastAction,
   LobbyTableSummary,
   Phase,
@@ -74,6 +75,9 @@ export class PokerTable {
   /** next deferred continuation (driven by host alarm / internal timer) */
   private pending: { id: string; at: number; fn: () => void } | null = null
   private log: string[] = []
+  /** structured public action trail for the CURRENT hand (replayer backbone) */
+  private trail: HandTrailAction[] = []
+  private trailN = 0
   private lastSummary: HandSummary | null = null
   private reveals = new Map<string, ShowdownReveal>()
   private winAmounts = new Map<string, number>()
@@ -456,6 +460,8 @@ export class PokerTable {
     this.reveals.clear()
     this.winAmounts.clear()
     this.phase = 'PREFLOP'
+    this.trail = []
+    this.trailN = 0
     this.addLog(`--- Hand #${this.handNumber} ---`)
 
     // move the button to the next eligible seat
@@ -512,6 +518,7 @@ export class PokerTable {
     if (p.stack === 0) p.allIn = true
     p.lastAction = { type: 'bet', amount: pay, at: Date.now() }
     this.addLog(`${p.name} posts ${label} ${pay}`)
+    this.tAdd({ street: 'PREFLOP', act: 'post', who: p.name, amt: pay })
   }
 
   private nextEligibleSeat(from: number, elig: SeatPlayer[]): number {
@@ -561,11 +568,13 @@ export class PokerTable {
         p.inHand = false
         p.lastAction = { type: 'fold', at: Date.now() }
         this.addLog(`${p.name} folds`)
+        this.tAdd({ street: this.trailStreet(), act: 'fold', who: p.name })
         break
       case 'check': {
         if (this.currentBet !== p.bet) return 'Cannot check — there is a bet to call'
         p.lastAction = { type: 'check', at: Date.now() }
         this.addLog(`${p.name} checks`)
+        this.tAdd({ street: this.trailStreet(), act: 'check', who: p.name })
         break
       }
       case 'call': {
@@ -578,6 +587,7 @@ export class PokerTable {
         if (p.stack === 0) p.allIn = true
         p.lastAction = { type: 'call', amount: pay, at: Date.now() }
         this.addLog(p.allIn ? `${p.name} calls ${pay} — ALL IN` : `${p.name} calls ${pay}`)
+        this.tAdd({ street: this.trailStreet(), act: 'call', who: p.name, amt: pay, ...(p.allIn ? { ai: true } : {}) })
         break
       }
       case 'bet':
@@ -616,6 +626,7 @@ export class PokerTable {
             ? `${p.name} bets ${target} — ALL IN`
             : `${p.name} ${wasBet ? 'bets' : 'raises to'} ${target}`,
         )
+        this.tAdd({ street: this.trailStreet(), act: wasBet ? 'bet' : 'raise', who: p.name, amt: target, ...(p.allIn ? { ai: true } : {}) })
         break
       }
     }
@@ -680,13 +691,19 @@ export class PokerTable {
     const maxBet = Math.max(...bets)
     const holders = inHand.filter((p) => p.bet === maxBet)
     if (holders.length === 1 && maxBet > 0) {
-      const second = Math.max(0, ...inHand.filter((p) => p !== holders[0]).map((p) => p.bet))
+      // The second-highest street bet must include FOLDED players' dead bets:
+      // a folder's chips stay in the pot, so the aggressor is only "uncalled"
+      // down to the largest bet anyone (alive or folded) put in this street.
+      // Counting active players only over-refunded and burned dead money
+      // above every alive player's committed in the side-pot construction.
+      const second = Math.max(0, ...this.seats.filter((p): p is SeatPlayer => !!p && p !== holders[0] && p.bet > 0).map((p) => p.bet))
       const refund = maxBet - second
       if (refund > 0) {
         holders[0].stack += refund
         holders[0].bet -= refund
         holders[0].committed -= refund
         this.addLog(`Uncalled ${refund} returned to ${holders[0].name}`)
+        this.tAdd({ street: this.trailStreet(), act: 'refund', who: holders[0].name, amt: refund })
       }
     }
   }
@@ -742,11 +759,12 @@ export class PokerTable {
   }
 
   private dealStreet(n: number, label: string) {
-    if (this.board.length === 0) this.addLog(`FLOP [${this.drawCards(3).map(cardCode).join(' ')}]`)
-    else {
-      const c = this.drawCards(n)
-      this.addLog(`${label} [${cardCode(c[0])}]`)
-    }
+    const drawn = this.drawCards(this.board.length === 0 ? 3 : n).map(cardCode)
+    if (drawn.length === 3) this.addLog(`FLOP [${drawn.join(' ')}]`)
+    else this.addLog(`${label} [${drawn[0]}]`)
+    const street: HandTrailAction['street'] =
+      this.board.length === 3 ? 'FLOP' : this.board.length === 4 ? 'TURN' : 'RIVER'
+    this.tAdd({ street, act: 'deal', cards: drawn })
   }
 
   private drawCards(n: number): Card[] {
@@ -770,6 +788,7 @@ export class PokerTable {
     this.totalPotSum += amount
     this.winAmounts.set(winner.userId, amount)
     this.addLog(`${winner.name} wins ${amount} (everyone folded)`)
+    this.tAdd({ street: 'SHOWDOWN', act: 'win', who: winner.name, amt: amount })
     this.phase = 'SHOWDOWN'
     this.reveals.clear()
     const summary: HandSummary = {
@@ -780,6 +799,7 @@ export class PokerTable {
       results: [{ userId: winner.userId, name: winner.name, amount, desc: 'All others folded', cards: [] }],
       participants: this.buildParticipants(),
       log: [...this.log],
+      trail: [...this.trail],
     }
     this.lastSummary = summary
     this.handsPlayed++
@@ -817,9 +837,12 @@ export class PokerTable {
       this.reveals.set(p.userId, { userId: p.userId, cards: [...p.hole], desc: ev.desc, best: ev.cards })
     }
 
-    // build side pots from total committed amounts
+    // build side pots from ALIVE players' committed levels. Dead money from
+    // folded players flows into the alive levels below their committed —
+    // levels defined only by folded stacks would have no eligible winners
+    // and their slice would silently vanish, so they are never created.
     const committedPlayers = this.seats.filter((s): s is SeatPlayer => !!s && s.committed > 0)
-    const levels = [...new Set(committedPlayers.map((p) => p.committed))].sort((a, b) => a - b)
+    const levels = [...new Set(alive.map((p) => p.committed))].sort((a, b) => a - b)
     const pots: { amount: number; eligible: SeatPlayer[] }[] = []
     let prev = 0
     for (const level of levels) {
@@ -850,6 +873,8 @@ export class PokerTable {
       let remainder = pot.amount - share * best.length
       // remainder chips go to earliest position left of the dealer
       const ordered = [...best].sort((a, b) => this.seatDistance(a.seatIndex) - this.seatDistance(b.seatIndex))
+      // per-pot share (NOT cumulative across pots) for the trail's win steps
+      const potShare = new Map<string, number>()
       for (const p of ordered) {
         let amt = share
         if (remainder > 0) {
@@ -858,11 +883,21 @@ export class PokerTable {
         }
         p.stack += amt
         wins.set(p.userId, (wins.get(p.userId) ?? 0) + amt)
+        potShare.set(p.userId, amt)
         descs.set(p.userId, evals.get(p.userId)!.desc)
       }
       this.addLog(
         `${potIdx > 1 ? 'Side pot' : 'Pot'} ${pot.amount} → ${ordered.map((p) => p.name).join(' & ')} (${evals.get(ordered[0].userId)!.desc})`,
       )
+      for (const p of ordered) {
+        this.tAdd({
+          street: 'SHOWDOWN',
+          act: 'win',
+          who: p.name,
+          amt: potShare.get(p.userId) ?? 0,
+          desc: evals.get(p.userId)!.desc ?? undefined,
+        })
+      }
     }
 
     const potTotal = pots.reduce((a, p) => a + p.amount, 0)
@@ -888,6 +923,7 @@ export class PokerTable {
       results,
       participants: this.buildParticipants(),
       log: [...this.log],
+      trail: [...this.trail],
     }
     this.lastSummary = summary
     this.handsPlayed++
@@ -961,6 +997,16 @@ export class PokerTable {
   private addLog(line: string) {
     this.log.push(line)
     if (this.log.length > MAX_LOG) this.log.splice(0, this.log.length - MAX_LOG)
+  }
+
+  /** append one public step to the current hand's action trail */
+  private tAdd(a: Omit<HandTrailAction, 'n'>) {
+    this.trail.push({ ...a, n: ++this.trailN })
+  }
+
+  /** current street for trail entries — 'WAITING' is impossible mid-hand but map it anyway */
+  private trailStreet(): HandTrailAction['street'] {
+    return this.phase === 'WAITING' ? 'PREFLOP' : this.phase
   }
 
   private emitChange() {

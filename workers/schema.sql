@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS HandHistory (
   results TEXT NOT NULL,
   participants TEXT NOT NULL DEFAULT '[]',
   log TEXT NOT NULL DEFAULT '[]',
+  trail TEXT NOT NULL DEFAULT '[]',
   at INTEGER NOT NULL
 );
 

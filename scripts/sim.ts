@@ -162,8 +162,9 @@ async function runFuzz(
         checkInvariant()
         const snap = table.snapshotFor(null)
         const actorId = snap.actorUserId
-        if (actorId && actorId.startsWith('sim:') && snap.selfOptions) {
-          const opts = snap.selfOptions
+        // selfOptions are viewer-scoped: read them as the ACTING player
+        const opts = actorId ? table.snapshotFor(actorId).selfOptions : null
+        if (actorId && actorId.startsWith('sim:') && opts) {
           // random agent with a bias to keep pots flowing
           const roll = Math.random()
           let action: 'fold' | 'check' | 'call' | 'bet' | 'raise' = 'fold'
@@ -185,6 +186,16 @@ async function runFuzz(
         if (awarded !== summary.potTotal)
           errors.push(`hand ${summary.handNumber}: awarded ${awarded} != pot ${summary.potTotal}`)
         if (summary.potTotal <= 0) errors.push(`hand ${summary.handNumber}: empty pot`)
+        // chips reaching the pot must equal post-refund contributions — catches
+        // dead money being burned by the side-pot construction (regression:
+        // folders committing above every alive player used to vanish)
+        const committedSum = summary.participants.reduce((a, p) => a + p.committed, 0)
+        if (committedSum !== summary.potTotal)
+          errors.push(`hand ${summary.handNumber}: participants committed ${committedSum} != pot ${summary.potTotal}`)
+        // the structured trail's win steps must mirror the pot exactly
+        const trailWins = (summary.trail ?? []).filter((a) => a.act === 'win').reduce((a, x) => a + (x.amt ?? 0), 0)
+        if (trailWins !== summary.potTotal)
+          errors.push(`hand ${summary.handNumber}: trail wins ${trailWins} != pot ${summary.potTotal}`)
         if (need > 2) {
           for (const p of summary.participants) {
             if ((p.cards?.length ?? 0) !== need)

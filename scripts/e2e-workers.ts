@@ -383,6 +383,21 @@ console.log('rebuy: over-cap rejected, balances untouched ✓')
   const d = dBody.hand
   if (!d || !Array.isArray(d.log) || !Array.isArray(d.participants)) fail('my/hand detail malformed')
 
+  // replayer trail: present, ordered, public-only — hole cards never included
+  const trail = (d as { trail?: { n: number; act: string; who?: string; amt?: number; cards?: string[]; desc?: string }[] }).trail
+  if (!Array.isArray(trail) || trail.length === 0) fail('my/hand detail must carry a non-empty action trail (replayer)')
+  if (trail!.some((a, i) => a.n !== i + 1)) fail('trail sequence numbers must be 1..N in order')
+  const VALID_ACTS = new Set(['post', 'fold', 'check', 'call', 'bet', 'raise', 'deal', 'refund', 'win'])
+  if (trail!.some((a) => !VALID_ACTS.has(a.act))) fail(`trail carries an unknown act: ${JSON.stringify(trail!.find((a) => !VALID_ACTS.has(a.act)))}`)
+  // desc strings are public hand names — strip before the leak scan
+  const trailJson = JSON.stringify(trail!.map(({ desc, ...rest }) => rest))
+  for (const p of d.participants) {
+    for (const c of p.cards ?? []) {
+      if (trailJson.includes(c)) fail(`PRIVACY LEAK: hole card ${c} present in the action trail`)
+    }
+  }
+  console.log(`hand history: action trail ok (${trail!.length} steps) — replayer ready ✓`)
+
   if (d.showdown) {
     for (const p of d.participants) {
       if (p.userId !== userId! && (p.cards?.length ?? 0) === 0)

@@ -86,6 +86,38 @@ export interface PotShare {
   cards: Card[] // best 5 cards
 }
 
+/**
+ * One step of a hand's public action trail — the structured backbone of the
+ * hand replayer. Contains ONLY public information (names, chip amounts,
+ * community cards): never hole cards, so a trail is safe to serve to every
+ * participant without masking.
+ */
+export interface HandTrailAction {
+  /** 1-based sequence within the hand — strictly increasing */
+  n: number
+  street: 'PREFLOP' | 'FLOP' | 'TURN' | 'RIVER' | 'SHOWDOWN'
+  act:
+    | 'post' // blind post
+    | 'fold'
+    | 'check'
+    | 'call' // amt = chips paid now
+    | 'bet' // amt = bet-to total on this street
+    | 'raise' // amt = raise-to total on this street
+    | 'deal' // community cards revealed (cards = codes dealt this street)
+    | 'refund' // uncalled bet portion returned (amt)
+    | 'win' // pot share (amt, desc)
+  /** acting player's display name (absent for `deal`) */
+  who?: string
+  /** chip amount relevant to the action */
+  amt?: number
+  /** community card codes revealed by a `deal` step */
+  cards?: string[]
+  /** all-in marker for call/bet/raise */
+  ai?: boolean
+  /** winning hand description on `win` steps */
+  desc?: string
+}
+
 export interface HandSummary {
   tableKey: string
   handNumber: number
@@ -94,6 +126,8 @@ export interface HandSummary {
   results: PotShare[]
   participants: { userId: string; name: string; committed: number; cards?: Card[] }[]
   log: string[]
+  /** structured public action trail (replayer backbone) */
+  trail: HandTrailAction[]
 }
 
 export interface ShowdownReveal {
