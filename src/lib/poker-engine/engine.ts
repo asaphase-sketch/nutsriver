@@ -496,10 +496,11 @@ export class PokerTable {
     }
     this.postBlind(this.seats[this.sbSeat]!, this.cfg.smallBlind, 'small blind')
     this.postBlind(this.seats[this.bbSeat]!, this.cfg.bigBlind, 'big blind')
-    // A short-stacked BB posted less than the big blind — the live bet is
-    // what he actually posted, not the nominal blind, so callers match the
-    // real number (no phantom toCall, no post-hoc refund of the difference).
-    this.currentBet = Math.min(this.cfg.bigBlind, this.seats[this.bbSeat]!.bet)
+    // The live preflop bet is the LARGEST blind actually posted — a short
+    // all-in BB does not lower it below the SB's post (his toCall would go
+    // negative), and a short SB does not raise it. Callers match the real
+    // number (no phantom toCall, no post-hoc refund of the difference).
+    this.currentBet = Math.max(this.seats[this.sbSeat]!.bet, this.seats[this.bbSeat]!.bet)
     this.minRaise = this.cfg.bigBlind
 
     const first = this.nextActorSeat(this.bbSeat)
