@@ -276,6 +276,7 @@ describe('card codec', () => {
 import { PokerTable } from '../src/lib/poker-engine/engine'
 import type { HandSummary, HandTrailAction, TableConfig } from '../src/lib/poker-engine/types'
 import { buildReplayStates, replayNets, type ReplayParticipant } from '../src/lib/poker/replay'
+import { tokenMatchesUser, type SessionPayload } from '../workers/auth'
 
 const TRAIL_CFG: TableConfig = {
   key: 't:trailtest',
@@ -828,5 +829,22 @@ describe('dormant table wake (engine contract for DO sleep)', () => {
     table.drain(Date.now() + 60_000)
     expect(table.snapshotFor(null).phase).not.toBe('WAITING')
     table.destroy()
+  })
+})
+
+describe('session generation (godmode force-logout)', () => {
+  // tokenMatchesUser is the gate that kills outstanding tokens the moment an
+  // admin force-logs-out, resets a password or bans a player.
+  test('tokens survive the migration and die on a ver bump', () => {
+    const legacy: SessionPayload = { uid: 'u1', exp: Date.now() + 60_000 } // no ver (pre-migration token)
+    const modern: SessionPayload = { uid: 'u1', exp: Date.now() + 60_000, ver: 3 }
+    // legacy token vs a user who never had a bump (column default 0) → still valid
+    expect(tokenMatchesUser(legacy, 0)).toBe(true)
+    expect(tokenMatchesUser(legacy, undefined)).toBe(true)
+    // modern token matches its generation
+    expect(tokenMatchesUser(modern, 3)).toBe(true)
+    // force-logout bumped the row → every outstanding token is dead
+    expect(tokenMatchesUser(modern, 4)).toBe(false)
+    expect(tokenMatchesUser(legacy, 1)).toBe(false)
   })
 })

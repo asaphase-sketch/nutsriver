@@ -22,6 +22,8 @@ export interface UserInfo {
   biggestPotWon: number
   role: UserRole
   banned?: boolean
+  /** bumped to invalidate every outstanding session token (force logout) */
+  sessionVer?: number
 }
 
 const SCHEMA = `
@@ -92,6 +94,16 @@ CREATE TABLE IF NOT EXISTS TournamentEntry (
   PRIMARY KEY (tournamentId, userId)
 );
 CREATE INDEX IF NOT EXISTS idx_entry_user ON TournamentEntry (userId, registeredAt);
+CREATE TABLE IF NOT EXISTS AdminLog (
+  id TEXT PRIMARY KEY,
+  at INTEGER NOT NULL,
+  actorId TEXT NOT NULL,
+  actorName TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target TEXT NOT NULL,
+  detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_adminlog_at ON AdminLog (at);
 `
 
 /** Idempotent additive migrations — safe to run on every cold start. */
@@ -103,6 +115,7 @@ const MIGRATIONS: string[] = [
   "ALTER TABLE HandHistory ADD COLUMN trail TEXT NOT NULL DEFAULT '[]'",
   'CREATE INDEX IF NOT EXISTS idx_tx_at ON ChipTransaction (at)',
   'CREATE INDEX IF NOT EXISTS idx_hand_at ON HandHistory (at)',
+  'ALTER TABLE User ADD COLUMN sessionVer INTEGER NOT NULL DEFAULT 0',
 ]
 
 let schemaPromise: Promise<void> | null = null
@@ -152,7 +165,7 @@ export async function createUser(db: D1Database, username: string, passwordHash:
 
 export async function findUserByUsername(db: D1Database, username: string): Promise<(UserInfo & { passwordHash: string }) | null> {
   const row = await db
-    .prepare('SELECT id, username, passwordHash, chips, handsPlayed, handsWon, biggestPotWon, role, banned FROM User WHERE username = ?')
+    .prepare('SELECT id, username, passwordHash, chips, handsPlayed, handsWon, biggestPotWon, role, banned, sessionVer FROM User WHERE username = ?')
     .bind(username)
     .first<any>()
   if (!row) return null
@@ -166,12 +179,13 @@ export async function findUserByUsername(db: D1Database, username: string): Prom
     biggestPotWon: row.biggestPotWon,
     role: (row.role as UserRole) ?? 'player',
     banned: !!row.banned,
+    sessionVer: Number(row.sessionVer) || 0,
   }
 }
 
 export async function findUser(db: D1Database, userId: string): Promise<UserInfo | null> {
   const row = await db
-    .prepare('SELECT id, username, chips, handsPlayed, handsWon, biggestPotWon, role, banned FROM User WHERE id = ?')
+    .prepare('SELECT id, username, chips, handsPlayed, handsWon, biggestPotWon, role, banned, sessionVer FROM User WHERE id = ?')
     .bind(userId)
     .first<any>()
   if (!row) return null
@@ -184,6 +198,7 @@ export async function findUser(db: D1Database, userId: string): Promise<UserInfo
     biggestPotWon: row.biggestPotWon,
     role: (row.role as UserRole) ?? 'player',
     banned: !!row.banned,
+    sessionVer: Number(row.sessionVer) || 0,
   }
 }
 
@@ -250,11 +265,16 @@ export interface AdminUserRow {
   createdAt: number
 }
 
-export async function listUsers(db: D1Database, limit = 200): Promise<AdminUserRow[]> {
-  const res = await db
-    .prepare('SELECT id, username, chips, handsPlayed, handsWon, biggestPotWon, role, banned, createdAt FROM User ORDER BY createdAt DESC LIMIT ?')
-    .bind(limit)
-    .all<any>()
+export async function listUsers(db: D1Database, opts: { q?: string; limit?: number } = {}): Promise<AdminUserRow[]> {
+  const q = (opts.q ?? '').trim()
+  const limit = Math.min(opts.limit ?? 200, 500)
+  const base = 'SELECT id, username, chips, handsPlayed, handsWon, biggestPotWon, role, banned, createdAt FROM User'
+  const res = q
+    ? await db
+        .prepare(`${base} WHERE username LIKE ? ORDER BY createdAt DESC LIMIT ?`)
+        .bind(`%${q}%`, limit)
+        .all<any>()
+    : await db.prepare(`${base} ORDER BY createdAt DESC LIMIT ?`).bind(limit).all<any>()
   return (res.results ?? []).map((row) => ({
     id: row.id,
     username: row.username,
@@ -272,6 +292,130 @@ export async function listUsers(db: D1Database, limit = 200): Promise<AdminUserR
 export async function setUserBanned(db: D1Database, userId: string, banned: boolean): Promise<boolean> {
   const res = await db.prepare('UPDATE User SET banned = ? WHERE id = ?').bind(banned ? 1 : 0, userId).run()
   return res.success && (res.meta.changes ?? 0) > 0
+}
+
+// ---------- godmode: deep player administration ----------
+
+/**
+ * Force logout — bumping sessionVer instantly invalidates every outstanding
+ * token for the user (sessionOf() compares the token's ver against the row).
+ */
+export async function bumpSessionVer(db: D1Database, userId: string): Promise<boolean> {
+  const res = await db.prepare('UPDATE User SET sessionVer = sessionVer + 1 WHERE id = ?').bind(userId).run()
+  return res.success && (res.meta.changes ?? 0) > 0
+}
+
+/** Rename a player (moderation tool). Enforces uniqueness, keeps the id. */
+export async function setUsername(db: D1Database, userId: string, username: string): Promise<{ ok: boolean; error?: string }> {
+  const clash = await db.prepare('SELECT id FROM User WHERE username = ? AND id != ?').bind(username, userId).first<any>()
+  if (clash) return { ok: false, error: 'Username taken' }
+  const res = await db.prepare('UPDATE User SET username = ? WHERE id = ?').bind(username, userId).run()
+  return res.success && (res.meta.changes ?? 0) > 0 ? { ok: true } : { ok: false, error: 'User not found' }
+}
+
+/** Set a new password hash AND kill existing sessions (password change = re-login). */
+export async function setPasswordHash(db: D1Database, userId: string, passwordHash: string): Promise<boolean> {
+  const res = await db
+    .prepare('UPDATE User SET passwordHash = ?, sessionVer = sessionVer + 1 WHERE id = ?')
+    .bind(passwordHash, userId)
+    .run()
+  return res.success && (res.meta.changes ?? 0) > 0
+}
+
+export async function setUserRole(db: D1Database, userId: string, role: UserRole): Promise<boolean> {
+  const res = await db.prepare('UPDATE User SET role = ? WHERE id = ?').bind(role, userId).run()
+  return res.success && (res.meta.changes ?? 0) > 0
+}
+
+/** Hard-delete an account. Tournament entries go too; hands/ledger keep name snapshots. */
+export async function deleteUserAccount(db: D1Database, userId: string): Promise<boolean> {
+  await db.prepare('DELETE FROM TournamentEntry WHERE userId = ?').bind(userId).run()
+  const res = await db.prepare('DELETE FROM User WHERE id = ?').bind(userId).run()
+  return res.success && (res.meta.changes ?? 0) > 0
+}
+
+/**
+ * Bulk chip grant/deduction across ALL accounts (promos, economy fixes).
+ * One statement; negative deltas floor at zero so nobody goes negative.
+ * The ledger gets one summary entry (detail carries the affected count).
+ */
+export async function bulkAdjustChips(
+  db: D1Database,
+  delta: number,
+  reason: string,
+): Promise<{ ok: boolean; changed?: number; error?: string }> {
+  if (!Number.isInteger(delta) || delta === 0) return { ok: false, error: 'Invalid amount' }
+  const res =
+    delta > 0
+      ? await db.prepare('UPDATE User SET chips = chips + ?').bind(delta).run()
+      : await db
+          .prepare('UPDATE User SET chips = CASE WHEN chips + ? < 0 THEN 0 ELSE chips + ? END')
+          .bind(delta, delta)
+          .run()
+  if (!res.success) return { ok: false, error: 'Bulk update failed' }
+  const changed = res.meta.changes ?? 0
+  await ledger(db, 'bulk', delta, 'admin_adjust', 0, `${reason || 'Bulk adjustment'} — ${changed} accounts`)
+  return { ok: true, changed }
+}
+
+// ---------- admin audit trail ----------
+
+export interface AdminLogRow {
+  id: string
+  at: number
+  actorName: string
+  action: string
+  target: string
+  detail: string | null
+}
+
+/** Append an audit entry — best-effort: logging must never break the action. */
+export async function adminLog(
+  db: D1Database,
+  actorId: string,
+  actorName: string,
+  action: string,
+  target: string,
+  detail?: string,
+): Promise<void> {
+  try {
+    await db
+      .prepare('INSERT INTO AdminLog (id, at, actorId, actorName, action, target, detail) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(UUID(), Date.now(), actorId, actorName, action, target, detail ?? null)
+      .run()
+  } catch (e) {
+    console.error('[store] admin log failed', e)
+  }
+}
+
+export async function listAdminLog(db: D1Database, limit = 80): Promise<AdminLogRow[]> {
+  const res = await db
+    .prepare('SELECT id, at, actorName, action, target, detail FROM AdminLog ORDER BY at DESC LIMIT ?')
+    .bind(Math.min(limit, 200))
+    .all<any>()
+  return (res.results ?? []).map((row) => ({
+    id: row.id,
+    at: row.at,
+    actorName: row.actorName,
+    action: row.action,
+    target: row.target,
+    detail: row.detail ?? null,
+  }))
+}
+
+/** Per-player ledger slice for the godmode player drawer. */
+export async function listUserTransactions(db: D1Database, userId: string, limit = 20) {
+  const res = await db
+    .prepare('SELECT amount, reason, balanceAfter, detail, at FROM ChipTransaction WHERE userId = ? ORDER BY at DESC LIMIT ?')
+    .bind(userId, Math.min(limit, 50))
+    .all<any>()
+  return (res.results ?? []).map((row) => ({
+    amount: row.amount,
+    reason: row.reason,
+    balanceAfter: row.balanceAfter,
+    detail: row.detail,
+    at: row.at,
+  }))
 }
 
 /** Public play-money leaderboard row — no ids, no emails, just standings. */

@@ -4,35 +4,45 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Activity, ArrowLeftRight, ArrowLeft, Bot, Coins, Database, Gauge, History, LayoutDashboard,
-  Radio, RefreshCw, ShieldCheck, Spade, Table2, Trophy, UserPlus, Users, Wifi,
+  Megaphone, Menu, Radio, RefreshCw, ScrollText, ShieldCheck, Spade, Table2, Trophy, UserPlus, Users, Wifi, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips, formatChipsShort } from '@/lib/poker/cards'
 import type { OverviewData } from './types'
 import { PlayersSection, RobotsSection, TransactionsSection } from './sections'
+import { AuditSection, BroadcastSection } from './audit'
 import { HandsSection } from './hands'
 import { TournamentsSection } from './tournaments'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 
-export type AdminTab = 'dashboard' | 'tables' | 'players' | 'hands' | 'tournaments' | 'robots' | 'transactions' | 'system'
+export type AdminTab =
+  | 'dashboard' | 'tables' | 'players' | 'hands' | 'tournaments'
+  | 'robots' | 'transactions' | 'audit' | 'broadcast' | 'system'
 
-const NAV: { id: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'tables', label: 'Live Tables', icon: Table2 },
-  { id: 'players', label: 'Players', icon: Users },
-  { id: 'hands', label: 'Hand History', icon: History },
-  { id: 'tournaments', label: 'Tournaments', icon: Trophy },
-  { id: 'robots', label: 'Robots', icon: Bot },
-  { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight },
-  { id: 'system', label: 'System', icon: Gauge },
+const NAV: { id: AdminTab; label: string; icon: typeof LayoutDashboard; hint: string }[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, hint: 'Live KPIs, activity, tables' },
+  { id: 'tables', label: 'Live Tables', icon: Table2, hint: 'Occupancy & hand history' },
+  { id: 'players', label: 'Players', icon: Users, hint: 'Godmode player control' },
+  { id: 'tournaments', label: 'Tournaments', icon: Trophy, hint: 'Create, fill, cancel' },
+  { id: 'hands', label: 'Hand History', icon: History, hint: 'Every dealt hand' },
+  { id: 'robots', label: 'Robots', icon: Bot, hint: 'House bot seats per table' },
+  { id: 'broadcast', label: 'Broadcast', icon: Megaphone, hint: 'Announce to everyone' },
+  { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight, hint: 'Chip ledger' },
+  { id: 'audit', label: 'Audit Log', icon: ScrollText, hint: 'Every admin action' },
+  { id: 'system', label: 'System', icon: Gauge, hint: 'Platform & retention' },
 ]
 
 export const TABLE_NAMES: Record<string, string> = {
   beginners: 'Beginners Corner',
+  omahalite: 'Omaha Lite',
   greenroom: 'Green Room',
-  riverkings: 'River Kings',
-  highrollers: 'High Rollers',
   omahajunction: 'Omaha Junction',
+  feltroyale: 'Felt Royale',
+  highfive: 'High Five Club',
+  riverkings: 'River Kings',
   omahaheights: 'Omaha Heights 5',
+  highrollers: 'High Rollers',
+  nosebleed: 'Nosebleed Row',
 }
 
 /** Pretty name for any table key, including tournament tables `t:<id>:<n>`. */
@@ -107,6 +117,7 @@ export function Dashboard({ username }: DashboardProps) {
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [clock, setClock] = useState(() => new Date())
   const [handsTableFilter, setHandsTableFilter] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const loadOverview = useCallback(async () => {
     const data = await fetchJson<OverviewData>('/api/admin/overview')
@@ -143,6 +154,12 @@ export function Dashboard({ username }: DashboardProps) {
   const openHands = useCallback((tableKey: string | null) => {
     setHandsTableFilter(tableKey)
     setTab('hands')
+  }, [])
+
+  const goto = useCallback((t: AdminTab) => {
+    setTab(t)
+    setMenuOpen(false)
+    window.scrollTo({ top: 0 })
   }, [])
 
   return (
@@ -216,6 +233,17 @@ export function Dashboard({ username }: DashboardProps) {
               <span className="hidden text-xs tabular-nums text-white/40 lg:block">
                 {clock.toISOString().slice(11, 19)} UTC
               </span>
+              {/* MASTER MENU — godmode command deck (all sections + live stats) */}
+              <button
+                type="button"
+                onClick={() => setMenuOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-amber-300/40 bg-gradient-to-b from-amber-400/20 to-amber-600/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-200 shadow-lg shadow-amber-900/20 transition hover:brightness-125"
+                aria-haspopup="dialog"
+              >
+                <Menu className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">Master Menu</span>
+                <span className="sm:hidden">Menu</span>
+              </button>
               <button
                 type="button"
                 onClick={loadOverview}
@@ -252,11 +280,99 @@ export function Dashboard({ username }: DashboardProps) {
           {tab === 'hands' && <HandsSection tableFilter={handsTableFilter} onFilterChange={setHandsTableFilter} />}
           {tab === 'tournaments' && <TournamentsSection />}
           {tab === 'robots' && <RobotsSection />}
+          {tab === 'broadcast' && <BroadcastSection />}
           {tab === 'transactions' && <TransactionsSection />}
+          {tab === 'audit' && <AuditSection />}
           {tab === 'system' && <SystemSection overview={overview} />}
         </main>
       </div>
+
+      <MasterMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        tab={tab}
+        onGo={goto}
+        username={username}
+        onlineNow={overview?.onlineNow}
+        activeTables={overview?.activeTables}
+      />
     </div>
+  )
+}
+
+// ---------------- Master menu (godmode command deck) ----------------
+
+function MasterMenu({
+  open, onOpenChange, tab, onGo, username, onlineNow, activeTables,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  tab: AdminTab
+  onGo: (t: AdminTab) => void
+  username: string
+  onlineNow?: number
+  activeTables?: number
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full overflow-y-auto border-white/10 bg-[#0c1512] p-0 text-white sm:w-[400px]"
+      >
+        <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0c1512]/95 px-5 py-4 backdrop-blur">
+          <SheetHeader className="p-0">
+            <SheetTitle className="flex items-center gap-2 font-serif">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-b from-amber-400 to-amber-600 text-slate-950 shadow">
+                <Spade className="h-4 w-4" aria-hidden />
+              </span>
+              Master Menu
+            </SheetTitle>
+            <SheetDescription asChild>
+              <p className="mt-1 text-xs text-white/45">
+                Godmode control deck — signed in as <span className="font-semibold text-white/80">{username}</span>
+                {onlineNow != null && <> · <span className="text-emerald-300">{onlineNow} online</span></>}
+                {activeTables != null && <> · {activeTables} table(s) occupied</>}
+              </p>
+            </SheetDescription>
+          </SheetHeader>
+        </div>
+        <nav className="grid grid-cols-2 gap-2.5 p-4" aria-label="Master menu sections">
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onGo(item.id)}
+              aria-current={tab === item.id ? 'page' : undefined}
+              className={cn(
+                'group flex flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition',
+                tab === item.id
+                  ? 'border-amber-300/50 bg-gradient-to-b from-amber-400/15 to-amber-600/5 shadow-lg shadow-amber-900/20'
+                  : 'border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-950/80 shadow-lg shadow-black/20 hover:border-amber-300/30',
+              )}
+            >
+              <span
+                className={cn(
+                  'flex h-9 w-9 items-center justify-center rounded-lg',
+                  tab === item.id ? 'bg-amber-400/20 text-amber-200' : 'bg-emerald-500/10 text-emerald-300 group-hover:bg-emerald-500/20',
+                )}
+              >
+                <item.icon className="h-5 w-5" aria-hidden />
+              </span>
+              <span className="text-sm font-bold text-white">{item.label}</span>
+              <span className="text-[11px] leading-tight text-white/40">{item.hint}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="px-4 pb-6">
+          <Link
+            href="/"
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-700/80 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden /> Back to the poker room
+          </Link>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 

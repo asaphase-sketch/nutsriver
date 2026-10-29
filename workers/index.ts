@@ -16,11 +16,13 @@ import {
   listUsers, adminAdjustChips, setUserBanned, adminOverview, adminActivity,
   listHands, getHand, listPlayerHands, getPlayerHand, listTransactions, getRobotsPolicy, setRobotsPolicy,
   pruneOldHands, pruneOldTransactions, getConfig,
+  bumpSessionVer, setUsername, setPasswordHash, setUserRole, deleteUserAccount,
+  bulkAdjustChips, adminLog, listAdminLog, listUserTransactions,
   createTournament, getTournament, registerForTournament,
   cancelTournament, adminListTournaments, setTournamentFields, listTopUsers,
   listTournaments, myTournamentEntries, tournamentEntries,
 } from './store'
-import { signToken, verifyToken, hashPassword, verifyPassword, parseCookie, sessionCookie, clearedSessionCookie, sessionExpiry } from './auth'
+import { signToken, verifyToken, hashPassword, verifyPassword, parseCookie, sessionCookie, clearedSessionCookie, sessionExpiry, tokenMatchesUser } from './auth'
 import { captureDiag } from './diag'
 import type { Env } from './env'
 import type { LobbyTableSummary, TournamentConfig, TournamentLobbyItem } from '../src/lib/poker-engine/types'
@@ -89,8 +91,9 @@ async function sessionOf(request: Request, env: Env) {
   const payload = await verifyToken(token, env.AUTH_SECRET)
   if (!payload) return null
   const user = await findUser(env.DB, payload.uid)
-  // banned accounts lose all access immediately — even with a valid session
-  if (!user || user.banned) return null
+  // banned accounts lose all access immediately — even with a valid session;
+  // a stale session generation (force-logout / password change) dies too
+  if (!user || user.banned || !tokenMatchesUser(payload, user.sessionVer)) return null
   return { user, token }
 }
 
@@ -149,7 +152,7 @@ const worker: ExportedHandler<Env> = {
       if (existing) return json({ error: 'Username taken' }, { status: 409 })
       const user = await createUser(env.DB, username, await hashPassword(password))
       if (!user) return json({ error: 'Could not create account — try again' }, { status: 500 })
-      const token = await signToken({ uid: user.id, exp: sessionExpiry() }, env.AUTH_SECRET)
+      const token = await signToken({ uid: user.id, exp: sessionExpiry(), ver: user.sessionVer ?? 0 }, env.AUTH_SECRET)
       return json({ user }, { headers: { 'Set-Cookie': sessionCookie(token) } })
     }
 
@@ -163,7 +166,7 @@ const worker: ExportedHandler<Env> = {
       if (!record || record.banned || !(await verifyPassword(password, record.passwordHash))) {
         return json({ error: 'Invalid username or password' }, { status: 401 })
       }
-      const token = await signToken({ uid: record.id, exp: sessionExpiry() }, env.AUTH_SECRET)
+      const token = await signToken({ uid: record.id, exp: sessionExpiry(), ver: record.sessionVer ?? 0 }, env.AUTH_SECRET)
       const { passwordHash: _ph, ...user } = record
       return json({ user }, { headers: { 'Set-Cookie': sessionCookie(token) } })
     }
@@ -349,7 +352,8 @@ const worker: ExportedHandler<Env> = {
       if (session.user.role !== 'admin') return json({ error: 'Forbidden — admin only' }, { status: 403 })
 
       if (path === '/api/admin/users' && request.method === 'GET') {
-        return json({ users: await listUsers(env.DB) })
+        const q = url.searchParams.get('q') ?? undefined
+        return json({ users: await listUsers(env.DB, { q }) })
       }
       if (path === '/api/admin/tables' && request.method === 'GET') {
         // cached LobbyDO snapshot — no per-table fan-out (free-tier budget)
@@ -367,7 +371,21 @@ const worker: ExportedHandler<Env> = {
         if (!userId || !Number.isInteger(delta)) return json({ error: 'userId and integer delta required' }, { status: 400 })
         const result = await adminAdjustChips(env.DB, userId, delta, String(body?.reason ?? ''))
         if (!result.ok) return json({ error: result.error ?? 'Adjustment failed' }, { status: 400 })
+        await adminLog(env.DB, session.user.id, session.user.username, delta > 0 ? 'chips.grant' : 'chips.take', userId, `${delta > 0 ? '+' : ''}${delta} — ${String(body?.reason ?? '')}`)
         return json({ chips: result.chips })
+      }
+
+      // ---- godmode: bulk economy tool (grant/deduct from EVERY account) ----
+      if (path === '/api/admin/chips/bulk' && request.method === 'POST') {
+        const body = await readJson<{ delta?: number; reason?: string }>(request)
+        const delta = Math.trunc(Number(body?.delta))
+        if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > 10_000_000) {
+          return json({ error: 'Integer delta required (|delta| ≤ 10,000,000)' }, { status: 400 })
+        }
+        const result = await bulkAdjustChips(env.DB, delta, String(body?.reason ?? ''))
+        if (!result.ok) return json({ error: result.error ?? 'Bulk update failed' }, { status: 400 })
+        await adminLog(env.DB, session.user.id, session.user.username, 'chips.bulk', 'all', `${delta > 0 ? '+' : ''}${delta} × ${result.changed} accounts — ${String(body?.reason ?? '')}`)
+        return json({ ok: true, changed: result.changed })
       }
       if (path === '/api/admin/standup' && request.method === 'POST') {
         const body = await readJson<{ userId?: string }>(request)
@@ -558,9 +576,10 @@ const worker: ExportedHandler<Env> = {
         return json({ ok: true, refunded })
       }
 
-      // ---- ban / unban (banning also force-stands the player everywhere) ----
+      // ---- ban / unban (banning also force-stands the player everywhere,
+      // kills their sessions and writes the audit trail) ----
       if (path === '/api/admin/ban' && request.method === 'POST') {
-        const body = await readJson<{ userId?: string; banned?: boolean }>(request)
+        const body = await readJson<{ userId?: string; banned?: boolean; reason?: string }>(request)
         const userId = String(body?.userId ?? '')
         const banned = !!body?.banned
         if (!userId) return json({ error: 'userId required' }, { status: 400 })
@@ -570,6 +589,7 @@ const worker: ExportedHandler<Env> = {
         const ok = await setUserBanned(env.DB, userId, banned)
         if (!ok) return json({ error: 'Update failed' }, { status: 500 })
         if (banned) {
+          await bumpSessionVer(env.DB, userId) // live sockets die on their next call
           for (const cfg of TABLE_CONFIGS) {
             try {
               await tableStub(env, cfg.key).fetch(`https://do/force-stand?userId=${encodeURIComponent(userId)}`)
@@ -578,7 +598,172 @@ const worker: ExportedHandler<Env> = {
             }
           }
         }
+        await adminLog(env.DB, session.user.id, session.user.username, banned ? 'player.ban' : 'player.unban', userId, `${target.username}${body?.reason ? ` — ${String(body.reason)}` : ''}`)
         return json({ ok: true, banned })
+      }
+
+      // ---- godmode: audit trail ----
+      if (path === '/api/admin/audit' && request.method === 'GET') {
+        return json({ log: await listAdminLog(env.DB, 100) })
+      }
+
+      // ---- godmode: per-player ledger slice (player drawer) ----
+      if (path === '/api/admin/player/transactions' && request.method === 'GET') {
+        const userId = url.searchParams.get('userId') ?? ''
+        if (!userId) return json({ error: 'userId required' }, { status: 400 })
+        return json({ transactions: await listUserTransactions(env.DB, userId, 20) })
+      }
+
+      // ---- godmode: rename (moderation) ----
+      if (path === '/api/admin/players/rename' && request.method === 'POST') {
+        const body = await readJson<{ userId?: string; username?: string }>(request)
+        const userId = String(body?.userId ?? '')
+        const username = String(body?.username ?? '').trim()
+        if (!userId || !/^[a-zA-Z0-9_]{3,20}$/.test(username)) return json({ error: 'userId and a valid username (3-20 letters/numbers/_) required' }, { status: 400 })
+        const target = await findUser(env.DB, userId)
+        if (!target) return json({ error: 'User not found' }, { status: 404 })
+        const result = await setUsername(env.DB, userId, username)
+        if (!result.ok) return json({ error: result.error ?? 'Rename failed' }, { status: 400 })
+        await adminLog(env.DB, session.user.id, session.user.username, 'player.rename', userId, `${target.username} → ${username}`)
+        return json({ ok: true })
+      }
+
+      // ---- godmode: password reset (generates one when omitted; shown ONCE) ----
+      if (path === '/api/admin/players/password' && request.method === 'POST') {
+        const body = await readJson<{ userId?: string; password?: string }>(request)
+        const userId = String(body?.userId ?? '')
+        const password = String(body?.password ?? '') || `rf-${crypto.randomUUID().slice(0, 8)}`
+        if (!userId || password.length < 8 || password.length > 100) return json({ error: 'Password must be 8-100 characters' }, { status: 400 })
+        const target = await findUser(env.DB, userId)
+        if (!target) return json({ error: 'User not found' }, { status: 404 })
+        const ok = await setPasswordHash(env.DB, userId, await hashPassword(password))
+        if (!ok) return json({ error: 'Update failed' }, { status: 500 })
+        await adminLog(env.DB, session.user.id, session.user.username, 'player.password', userId, target.username)
+        return json({ ok: true, password })
+      }
+
+      // ---- godmode: force logout (kills every live session token) ----
+      if (path === '/api/admin/players/logout' && request.method === 'POST') {
+        const body = await readJson<{ userId?: string }>(request)
+        const userId = String(body?.userId ?? '')
+        if (!userId) return json({ error: 'userId required' }, { status: 400 })
+        const target = await findUser(env.DB, userId)
+        if (!target) return json({ error: 'User not found' }, { status: 404 })
+        const ok = await bumpSessionVer(env.DB, userId)
+        if (!ok) return json({ error: 'Update failed' }, { status: 500 })
+        await adminLog(env.DB, session.user.id, session.user.username, 'player.logout', userId, target.username)
+        return json({ ok: true })
+      }
+
+      // ---- godmode: promote / demote (self-demotion & last-admin guarded) ----
+      if (path === '/api/admin/players/role' && request.method === 'POST') {
+        const body = await readJson<{ userId?: string; role?: string }>(request)
+        const userId = String(body?.userId ?? '')
+        const role = body?.role === 'admin' ? 'admin' : 'player'
+        if (!userId) return json({ error: 'userId required' }, { status: 400 })
+        const target = await findUser(env.DB, userId)
+        if (!target) return json({ error: 'User not found' }, { status: 404 })
+        if (target.role === role) return json({ error: `Already ${role}` }, { status: 409 })
+        if (role === 'player' && (await countAdmins(env.DB)) <= 1) return json({ error: 'Cannot demote the last admin' }, { status: 409 })
+        const ok = await setUserRole(env.DB, userId, role)
+        if (!ok) return json({ error: 'Update failed' }, { status: 500 })
+        await adminLog(env.DB, session.user.id, session.user.username, role === 'admin' ? 'player.promote' : 'player.demote', userId, target.username)
+        return json({ ok: true, role })
+      }
+
+      // ---- godmode: hard delete (stands the player up everywhere first) ----
+      if (path === '/api/admin/players/delete' && request.method === 'POST') {
+        const body = await readJson<{ userId?: string }>(request)
+        const userId = String(body?.userId ?? '')
+        if (!userId) return json({ error: 'userId required' }, { status: 400 })
+        const target = await findUser(env.DB, userId)
+        if (!target) return json({ error: 'User not found' }, { status: 404 })
+        if (target.role === 'admin') return json({ error: 'Demote the admin before deleting' }, { status: 409 })
+        for (const cfg of TABLE_CONFIGS) {
+          try {
+            await tableStub(env, cfg.key).fetch(`https://do/force-stand?userId=${encodeURIComponent(userId)}`)
+          } catch {
+            /* table unreachable — skip */
+          }
+        }
+        const ok = await deleteUserAccount(env.DB, userId)
+        if (!ok) return json({ error: 'Delete failed' }, { status: 500 })
+        await adminLog(env.DB, session.user.id, session.user.username, 'player.delete', userId, target.username)
+        return json({ ok: true })
+      }
+
+      // ---- godmode: locate a player across all tables (on-demand fan-out) ----
+      if (path === '/api/admin/players/locate' && request.method === 'POST') {
+        const body = await readJson<{ userId?: string }>(request)
+        const userId = String(body?.userId ?? '')
+        if (!userId) return json({ error: 'userId required' }, { status: 400 })
+        const seated: string[] = []
+        for (const cfg of TABLE_CONFIGS) {
+          try {
+            const res = await tableStub(env, cfg.key).fetch(`https://do/seat-of?userId=${encodeURIComponent(userId)}`)
+            const data = (await res.json()) as { seated?: boolean }
+            if (data.seated) seated.push(cfg.key)
+          } catch {
+            /* table unreachable — skip */
+          }
+        }
+        return json({ seated })
+      }
+
+      // ---- godmode: kick from ONE table (surgical; standup covers all) ----
+      if (path === '/api/admin/tables/kick' && request.method === 'POST') {
+        const body = await readJson<{ tableKey?: string; userId?: string }>(request)
+        const tableKey = String(body?.tableKey ?? '')
+        const userId = String(body?.userId ?? '')
+        if (!TABLE_CONFIGS.some((cfg) => cfg.key === tableKey)) return json({ error: 'Unknown table' }, { status: 400 })
+        if (!userId) return json({ error: 'userId required' }, { status: 400 })
+        try {
+          const res = await tableStub(env, tableKey).fetch(`https://do/force-stand?userId=${encodeURIComponent(userId)}`)
+          if (!res.ok) return json({ error: 'Player is not seated there' }, { status: 409 })
+        } catch {
+          return json({ error: 'Table is asleep' }, { status: 503 })
+        }
+        await adminLog(env.DB, session.user.id, session.user.username, 'table.kick', userId, tableKey)
+        return json({ ok: true })
+      }
+
+      // ---- godmode: broadcast an announcement (lobby socket + table chats) ----
+      if (path === '/api/admin/broadcast' && request.method === 'POST') {
+        const body = await readJson<{ message?: string; target?: string }>(request)
+        const message = String(body?.message ?? '').trim().slice(0, 200)
+        const target = body?.target === 'tables' ? 'tables' : 'lobby'
+        if (!message) return json({ error: 'Message required (≤200 chars)' }, { status: 400 })
+        let reached = 0
+        if (target === 'lobby') {
+          try {
+            const res = await lobbyStub(env).fetch('https://do/announce', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message }),
+            })
+            if (res.ok) reached = Number(((await res.json()) as { viewers?: number }).viewers ?? 0)
+          } catch {
+            /* lobby asleep — nothing to announce to */
+          }
+        } else {
+          const results = await Promise.all(
+            TABLE_CONFIGS.map(async (cfg) => {
+              try {
+                const res = await tableStub(env, cfg.key).fetch('https://do/announce', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ message }),
+                })
+                return res.ok ? 1 : 0
+              } catch {
+                return 0
+              }
+            }),
+          )
+          reached = results.reduce<number>((a, b) => a + b, 0)
+        }
+        await adminLog(env.DB, session.user.id, session.user.username, 'broadcast', target, message)
+        return json({ ok: true, reached, target })
       }
     }
 

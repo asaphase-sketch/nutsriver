@@ -16,6 +16,17 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 export interface SessionPayload {
   uid: string
   exp: number
+  /**
+   * Session generation — bumped on the User row by force-logout / password
+   * change / ban flows. Tokens without a ver (legacy) read as 0, which
+   * matches the column default, so existing sessions survive the migration.
+   */
+  ver?: number
+}
+
+/** True when a verified token may still act as this user (session generation matches). */
+export function tokenMatchesUser(payload: SessionPayload, sessionVer: number | undefined): boolean {
+  return (payload.ver ?? 0) === (sessionVer ?? 0)
 }
 
 // ---------- base64url helpers ----------

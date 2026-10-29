@@ -1,13 +1,19 @@
 'use client'
 
+/**
+ * Robots + Transactions sections. The godmode Players section lives in
+ * ./players (bottom-sheet drawer + full toolkit); the old inline one is
+ * retired. Audit/Broadcast live in ./audit.
+ */
 import { useCallback, useEffect, useState } from 'react'
-import { Ban, Bot, Minus, Plus, ShieldCheck, Search, Save } from 'lucide-react'
+import { Bot, Minus, Plus, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips } from '@/lib/poker/cards'
 import { Card, fetchJson, tableDisplayName } from './dashboard'
-import type { AdminUser, RobotsData, TxRow } from './types'
+import type { RobotsData, TxRow } from './types'
 
-const TABLE_KEYS = ['beginners', 'greenroom', 'riverkings', 'highrollers'] as const
+// PlayersSection moved to ./players — re-exported so existing imports keep working.
+export { PlayersSection } from './players'
 
 function Notice({ text }: { text: string | null }) {
   if (!text) return null
@@ -18,182 +24,26 @@ function Notice({ text }: { text: string | null }) {
   )
 }
 
-// ---------------- Players ----------------
-
-export function PlayersSection() {
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [loaded, setLoaded] = useState(false)
-  const [query, setQuery] = useState('')
-  const [amounts, setAmounts] = useState<Record<string, string>>({})
-  const [notice, setNotice] = useState<string | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
-  const reload = useCallback(() => setReloadKey((k) => k + 1), [])
-
-  useEffect(() => {
-    let cancelled = false
-    fetchJson<{ users: AdminUser[] }>('/api/admin/users').then((data) => {
-      if (cancelled) return
-      if (data) setUsers(data.users ?? [])
-      setLoaded(true)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [reloadKey])
-
-  const adjustChips = async (u: AdminUser, direction: 1 | -1) => {
-    const parsed = Number.parseInt(amounts[u.id] ?? '', 10)
-    if (!Number.isInteger(parsed) || parsed === 0) {
-      setNotice('Enter a non-zero whole number first')
-      return
-    }
-    const res = await fetch('/api/admin/chips', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: u.id, delta: direction > 0 ? parsed : -parsed, reason: 'admin panel' }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { chips?: number; error?: string }
-    setNotice(res.ok ? `${u.username}: balance is now ${formatChips(data.chips ?? 0)}` : (data.error ?? 'Adjustment failed'))
-    if (res.ok) setAmounts((prev) => ({ ...prev, [u.id]: '' }))
-    reload()
-  }
-
-  const forceStandUp = async (u: AdminUser) => {
-    const res = await fetch('/api/admin/standup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: u.id }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; stoodUp?: string[] }
-    setNotice(res.ok && data.ok ? `${u.username} removed from ${data.stoodUp?.join(', ')}` : `${u.username} is not seated`)
-    reload()
-  }
-
-  const setBan = async (u: AdminUser, banned: boolean) => {
-    const res = await fetch('/api/admin/ban', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: u.id, banned }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
-    setNotice(res.ok ? `${u.username} is now ${banned ? 'BANNED — logged out and blocked from tables' : 'unbanned'}` : (data.error ?? 'Failed'))
-    reload()
-  }
-
-  const q = query.trim().toLowerCase()
-  const filtered = q ? users.filter((u) => u.username.toLowerCase().includes(q)) : users
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" aria-hidden />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search players…"
-            className="h-10 w-64 rounded-lg border border-white/10 bg-slate-950/70 pl-9 pr-3 text-sm text-white placeholder:text-white/30 focus:border-emerald-400/50 focus:outline-none"
-            aria-label="Search players"
-          />
-        </div>
-        <span className="text-sm text-white/40">
-          {filtered.length} of {users.length} players
-        </span>
-      </div>
-      <Notice text={notice} />
-
-      <div className="overflow-x-auto rounded-xl border border-white/10">
-        <table className="w-full min-w-[900px] text-sm">
-          <thead>
-            <tr className="border-b border-white/10 bg-slate-900/80 text-left text-white/50">
-              <th className="px-4 py-3 font-medium">Player</th>
-              <th className="px-4 py-3 font-medium">Balance</th>
-              <th className="px-4 py-3 font-medium">Hands</th>
-              <th className="px-4 py-3 font-medium">Biggest pot</th>
-              <th className="px-4 py-3 font-medium">Joined</th>
-              <th className="px-4 py-3 font-medium">Adjust chips</th>
-              <th className="px-4 py-3 font-medium">Controls</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((u) => (
-              <tr key={u.id} className={cn('border-b border-white/5 last:border-0', u.banned && 'bg-rose-500/5')}>
-                <td className="px-4 py-3">
-                  <span className="font-semibold text-white">{u.username}</span>
-                  {u.role === 'admin' && (
-                    <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-300">admin</span>
-                  )}
-                  {u.banned && (
-                    <span className="ml-2 rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-300">banned</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 font-semibold tabular-nums text-emerald-300">{formatChips(u.chips)}</td>
-                <td className="px-4 py-3 tabular-nums text-white/70">
-                  {formatChips(u.handsPlayed)} <span className="text-white/35">/ {formatChips(u.handsWon)} won</span>
-                </td>
-                <td className="px-4 py-3 tabular-nums text-white/70">{formatChips(u.biggestPotWon)}</td>
-                <td className="px-4 py-3 text-white/45">{new Date(u.createdAt).toISOString().slice(0, 10)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={amounts[u.id] ?? ''}
-                      onChange={(e) => setAmounts((prev) => ({ ...prev, [u.id]: e.target.value }))}
-                      placeholder="±amount"
-                      inputMode="numeric"
-                      className="h-8 w-24 rounded border border-white/10 bg-slate-950/60 px-2 text-white placeholder:text-white/30 focus:outline-none"
-                      aria-label={`Chip amount for ${u.username}`}
-                    />
-                    <button onClick={() => adjustChips(u, 1)} className="rounded bg-emerald-600/20 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-600/30">
-                      + Give
-                    </button>
-                    <button onClick={() => adjustChips(u, -1)} className="rounded bg-rose-600/20 px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-600/30">
-                      − Take
-                    </button>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => forceStandUp(u)}
-                      className="rounded bg-slate-700/40 px-2 py-1 text-xs font-semibold text-white/70 hover:bg-slate-700/60 hover:text-white"
-                    >
-                      Stand up
-                    </button>
-                    {u.role !== 'admin' &&
-                      (u.banned ? (
-                        <button
-                          onClick={() => setBan(u, false)}
-                          className="flex items-center gap-1 rounded bg-emerald-600/20 px-2 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-600/30"
-                        >
-                          <ShieldCheck className="h-3 w-3" aria-hidden /> Unban
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => setBan(u, true)}
-                          className="flex items-center gap-1 rounded bg-rose-600/20 px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-600/30"
-                        >
-                          <Ban className="h-3 w-3" aria-hidden /> Ban
-                        </button>
-                      ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-white/40">
-                  {loaded ? (q ? `No players match “${query}”` : 'No players yet') : 'Loading…'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
 // ---------------- Robots ----------------
+
+/** ALL lobby-visible tables — was hardcoded to 4, missing every Omaha table. */
+const TABLE_KEYS = [
+  'beginners', 'omahalite', 'greenroom', 'omahajunction', 'feltroyale',
+  'highfive', 'riverkings', 'omahaheights', 'highrollers', 'nosebleed',
+] as const
+
+const TABLE_DEFAULT_BOTS: Record<string, number> = {
+  beginners: 4,
+  omahalite: 3,
+  greenroom: 3,
+  omahajunction: 3,
+  feltroyale: 3,
+  highfive: 2,
+  riverkings: 2,
+  omahaheights: 2,
+  highrollers: 2,
+  nosebleed: 2,
+}
 
 export function RobotsSection() {
   const [data, setData] = useState<RobotsData | null>(null)
@@ -226,7 +76,7 @@ export function RobotsSection() {
   const step = (key: string, delta: number) => {
     setCounts((prev) => {
       const cur = prev[key] ?? -1 // -1 = table default
-      const base = cur === -1 ? DEFAULTS[key]! : cur
+      const base = cur === -1 ? TABLE_DEFAULT_BOTS[key]! : cur
       const next = Math.max(0, Math.min(base + delta, 9))
       return { ...prev, [key]: next }
     })
@@ -255,7 +105,7 @@ export function RobotsSection() {
 
   const effective = (key: string): number => {
     const v = counts[key]
-    return v === undefined ? DEFAULTS[key]! : v
+    return v === undefined ? TABLE_DEFAULT_BOTS[key]! : v
   }
 
   return (
@@ -344,13 +194,6 @@ export function RobotsSection() {
       </button>
     </div>
   )
-}
-
-const DEFAULTS: Record<string, number> = {
-  beginners: 4,
-  greenroom: 3,
-  riverkings: 2,
-  highrollers: 2,
 }
 
 // ---------------- Transactions ----------------

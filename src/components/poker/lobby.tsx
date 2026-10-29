@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DoorOpen, Gift, Medal, Trophy, Users, Zap } from 'lucide-react'
+import { DoorOpen, Gift, Medal, Megaphone, Trophy, Users, X, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips } from '@/lib/poker/cards'
 import {
@@ -117,6 +117,26 @@ export function Lobby({ poker }: LobbyProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 p-4">
+      {/* admin announcements — gold 2.5D strip, dismissible, most recent last */}
+      {poker.announcements.map((a) => (
+        <div
+          key={a.id}
+          role="status"
+          className="flex items-start gap-3 rounded-xl border border-amber-300/40 bg-gradient-to-b from-amber-400/15 to-amber-600/5 px-4 py-3 shadow-lg shadow-amber-900/20"
+        >
+          <Megaphone className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden />
+          <p className="min-w-0 flex-1 text-sm font-medium text-amber-100">{a.message}</p>
+          <button
+            type="button"
+            onClick={() => poker.dismissAnnouncement(a.id)}
+            aria-label="Dismiss announcement"
+            className="shrink-0 rounded-md p-1 text-amber-200/60 transition hover:bg-white/10 hover:text-amber-100"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ))}
+
       <section className="text-center">
         <h2 className="font-serif text-2xl font-bold text-white sm:text-3xl">NutsRiver Lobby</h2>
         <p className="mt-1 text-sm text-white/50">

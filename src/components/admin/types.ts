@@ -99,6 +99,15 @@ export interface TxRow {
   at: number
 }
 
+export interface AuditRow {
+  id: string
+  at: number
+  actorName: string
+  action: string
+  target: string
+  detail: string | null
+}
+
 export interface RobotsPolicy {
   enabled: boolean
   tableCounts: Record<string, number>

@@ -512,7 +512,7 @@ console.log(`stood up — balance ${balanceNow} → ${finalChips} (stack ${stack
   // security gates for the new dashboard endpoints (run in every environment)
   const anonOverview = await fetch(`${BASE}/api/admin/overview`)
   if (anonOverview.status !== 401) fail(`admin/overview anon should be 401, got ${anonOverview.status}`)
-  for (const ep of ['overview', 'hands', 'robots', 'transactions', 'tournaments']) {
+  for (const ep of ['overview', 'hands', 'robots', 'transactions', 'tournaments', 'audit', 'broadcast', 'players/rename', 'chips/bulk']) {
     const asPlayer = await fetch(`${BASE}/api/admin/${ep}`, { headers: { cookie } })
     if (asPlayer.status !== 403) fail(`admin/${ep} as player should be 403, got ${asPlayer.status}`)
   }
@@ -583,7 +583,7 @@ console.log(`stood up — balance ${balanceNow} → ${finalChips} (stack ${stack
       onlineNow?: number
     }
     if (overview.status !== 200 || typeof overviewBody.stats?.totalUsers !== 'number') fail('admin overview failed')
-    if (!Array.isArray(overviewBody.tables) || overviewBody.tables.length !== 6) fail('admin overview tables failed')
+    if (!Array.isArray(overviewBody.tables) || overviewBody.tables.length !== 10) fail('admin overview tables failed')
     if (!Array.isArray(overviewBody.activity)) fail('admin activity feed failed')
     console.log('admin overview: stats+activity+metrics OK')
 

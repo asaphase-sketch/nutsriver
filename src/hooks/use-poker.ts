@@ -24,6 +24,9 @@ export interface PokerClient {
   tableViews: Record<string, ClientTableView>
   /** chat history per table key */
   chats: Record<string, ChatMessage[]>
+  /** admin broadcasts pushed through the LobbyDO socket (most recent last) */
+  announcements: { id: string; message: string; at: number }[]
+  dismissAnnouncement: (id: string) => void
   /** table currently open in the UI (null = lobby) */
   activeTable: string | null
   setActiveTable: (key: string | null) => void
@@ -63,6 +66,7 @@ export function usePoker(): PokerClient {
   const [user, setUser] = useState<PokerUser | null>(null)
   const [connected, setConnected] = useState(false)
   const [chips, setChips] = useState(0)
+  const [announcements, setAnnouncements] = useState<{ id: string; message: string; at: number }[]>([])
   const [lobbyTables, setLobbyTables] = useState<LobbyTableSummary[]>([])
   const [tournaments, setTournaments] = useState<TournamentLobbyItem[]>([])
   const [tableViews, setTableViews] = useState<Record<string, ClientTableView>>({})
@@ -199,6 +203,10 @@ export function usePoker(): PokerClient {
               }),
             )
           }
+        } else if (data?.t === 'announcement' && data.message) {
+          // admin broadcast pushed through the LobbyDO socket
+          const a = { id: String(data.at ?? Date.now()), message: String(data.message).slice(0, 200), at: Number(data.at) || Date.now() }
+          setAnnouncements((prev) => [...prev.filter((x) => x.id !== a.id), a].slice(-3))
         } else if (data?.t === 'state' && data.view?.tableKey) {
           const view = data.view as ClientTableView
           tableViewsRef.current = { ...tableViewsRef.current, [view.tableKey]: view }
@@ -568,6 +576,8 @@ export function usePoker(): PokerClient {
     tournaments,
     tableViews,
     chats,
+    announcements,
+    dismissAnnouncement: (id: string) => setAnnouncements((prev) => prev.filter((a) => a.id !== id)),
     activeTable,
     setActiveTable: setActiveTableSafe,
     login,

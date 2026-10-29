@@ -414,6 +414,20 @@ export class TableDO {
       await this.recomputeAlarm()
       return Response.json({ ok: true })
     }
+    if (url.pathname.endsWith('/announce')) {
+      // admin broadcast — lands in the table chat as a Dealer message
+      let message = ''
+      try {
+        const body = (await request.json()) as { message?: string }
+        message = String(body?.message ?? '').slice(0, 200)
+      } catch {
+        return Response.json({ ok: false, error: 'Invalid JSON' }, { status: 400 })
+      }
+      if (!message) return Response.json({ ok: false, error: 'Message required' }, { status: 400 })
+      this.addChat({ id: crypto.randomUUID(), from: 'dealer', name: '♠ Dealer', text: message, at: Date.now(), system: true })
+      await this.persistIfDirty()
+      return Response.json({ ok: true })
+    }
     return new Response('Not found', { status: 404 })
   }
 

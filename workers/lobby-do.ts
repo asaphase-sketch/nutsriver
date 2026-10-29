@@ -133,6 +133,22 @@ export class LobbyDO {
         tables: this.cache?.tables.length ?? 0,
       })
     }
+    if (url.pathname.endsWith('/announce')) {
+      // admin broadcast — push an announcement to every open lobby socket
+      let message = ''
+      try {
+        const body = (await request.json()) as { message?: string }
+        message = String(body?.message ?? '').slice(0, 200)
+      } catch {
+        return Response.json({ ok: false, error: 'Invalid JSON' }, { status: 400 })
+      }
+      if (!message) return Response.json({ ok: false, error: 'Message required' }, { status: 400 })
+      const viewers = this.state.getWebSockets().length
+      for (const ws of this.state.getWebSockets()) {
+        this.send(ws, { t: 'announcement', message, at: Date.now() })
+      }
+      return Response.json({ ok: true, viewers })
+    }
     return new Response('Not found', { status: 404 })
   }
 
