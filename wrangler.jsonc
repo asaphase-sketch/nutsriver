@@ -3,9 +3,6 @@
   "name": "royal-felt",
   "main": "workers/index.ts",
   "compatibility_date": "2026-01-15",
-  "build": {
-    "command": "node scripts/cf-disable-builds.mjs"
-  },
   "workers_dev": true,
   "triggers": {
     "crons": ["17 3 * * *"]
