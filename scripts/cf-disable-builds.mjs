@@ -29,43 +29,25 @@ async function api(method, url, body) {
 
 (async () => {
   try {
-    console.log('[cf-maintenance] [1/5] discover builds-registered workers');
-    const all = await api('GET', `${BASE}/workers`);
-    console.log('[cf-maintenance] GET /builds/workers status', all.status);
+    console.log('[cf-maintenance] [1/4] account-wide trigger list');
+    const all = await api('GET', `${BASE}/triggers`);
+    console.log('[cf-maintenance] GET /builds/triggers status', all.status);
     console.log(all.text);
 
-    console.log('[cf-maintenance] [2/5] worker record by name');
-    const rec = await api('GET', `${BASE}/workers/${WORKER}`);
-    console.log('[cf-maintenance] GET /builds/workers/royal-felt status', rec.status);
-    console.log(rec.text);
+    // Collect every trigger uuid; prefer ones tied to royal-felt but patch
+    // anything that references our worker name.
+    const items = Array.isArray(all.json?.result)
+      ? all.json.result
+      : (all.json?.result?.triggers || all.json?.result?.items || []);
+    const mine = items.filter((t) => {
+      const blob = JSON.stringify(t).toLowerCase();
+      return blob.includes(WORKER);
+    });
+    const uuids = mine.map((t) => t.uuid || t.id).filter(Boolean);
+    console.log('[cf-maintenance] royal-felt trigger uuids:', uuids);
 
-    // external_script_id may be a system tag rather than the worker name.
-    const candidates = new Set([WORKER]);
-    const collect = (o) => {
-      if (!o || typeof o !== 'object') return;
-      if (typeof o.external_script_id === 'string') candidates.add(o.external_script_id);
-      if (typeof o.externalScriptId === 'string') candidates.add(o.externalScriptId);
-      if (typeof o.script_id === 'string') candidates.add(o.script_id);
-      if (typeof o.script_name === 'string') candidates.add(o.script_name);
-      Object.values(o).forEach(collect);
-    };
-    collect(all.json?.result);
-    collect(rec.json?.result);
-    console.log('[cf-maintenance] candidate ids:', [...candidates]);
-
-    for (const id of candidates) {
-      console.log(`[cf-maintenance] [3/5] listing triggers for "${id}"`);
-      const list = await api('GET', `${BASE}/workers/${id}/triggers`);
-      console.log('[cf-maintenance] status', list.status);
-      console.log(list.text);
-
-      const items = Array.isArray(list.json?.result)
-        ? list.json.result
-        : (list.json?.result?.triggers || list.json?.result?.items || []);
-      const uuids = items.map((t) => t.uuid || t.id).filter(Boolean);
-      if (!uuids.length) continue;
-
-      console.log(`[cf-maintenance] [4/5] patching ${uuids.length} trigger(s) for "${id}"`);
+    if (uuids.length) {
+      console.log('[cf-maintenance] [2/4] patching triggers (never-match branch filters)');
       for (const u of uuids) {
         const patched = await api('PATCH', `${BASE}/triggers/${u}`, {
           branch_includes: ['__disabled__'],
@@ -74,9 +56,16 @@ async function api(method, url, body) {
         console.log(`[cf-maintenance] PATCH ${u} -> ${patched.status}`);
         console.log(patched.text);
       }
+    } else {
+      console.log('[cf-maintenance] [2/4] no matching triggers in account list');
     }
 
-    console.log('[cf-maintenance] [5/5] done');
+    console.log('[cf-maintenance] [3/4] recent builds for royal-felt (context)');
+    const builds = await api('GET', `${BASE}/workers/royal-felt/builds?per_page=2`);
+    console.log('[cf-maintenance] status', builds.status);
+    console.log(builds.text);
+
+    console.log('[cf-maintenance] [4/4] done');
   } catch (e) {
     console.log('[cf-maintenance] non-fatal error:', e?.message || e);
   }
