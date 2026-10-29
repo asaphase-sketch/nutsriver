@@ -180,7 +180,7 @@ const worker: ExportedHandler<Env> = {
     // ---- TEMP production diagnostics (remove after recovery) ----
     if (path === '/api/diag' && request.method === 'GET') {
       const stored = await getConfig(env.DB, 'diag:last').catch((e) => `d1-read-failed: ${String(e)}`)
-      const probes = []
+      const probes: { label: string; ok: boolean; status: number; body: string }[] = []
       try {
         const res = await tableStub(env, 'beginners').fetch('https://do/summary')
         probes.push({ label: 'table:beginners/summary', ok: res.ok, status: res.status, body: (await res.text()).slice(0, 200) })
