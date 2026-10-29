@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint (eslint)
+        run: bun run lint
+
+      - name: Typecheck (app, strict)
+        run: bun run typecheck
+
+      - name: Typecheck (workers, strict)
+        run: bun run typecheck:workers
+
+      - name: Engine unit tests + randomized fuzz (chip conservation, side pots)
+        run: bun run sim
+
+      - name: Build (Next.js static export for Workers)
+        run: bun run build
+
+      - name: Start wrangler dev (assets, API, DOs, D1)
+        run: |
+          echo "AUTH_SECRET=ci-only-secret-not-for-production" > .dev.vars
+          echo "E2E_FAST=1" >> .dev.vars
+          nohup bunx wrangler dev --port 3100 > wrangler-ci.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3100/api/lobby > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://localhost:3100/api/lobby > /dev/null || {
+            echo "::error::wrangler dev failed to become ready"
+            cat wrangler-ci.log
+            exit 1
+          }
+          echo "Ready"
+
+      - name: E2E — full game over raw WebSocket (register → sit → deal → act → stand)
+        run: E2E_BASE=http://localhost:3100 bun scripts/e2e-workers.ts
+
+      - name: Print wrangler log (on failure)
+        if: failure()
+        run: cat wrangler-ci.log || true

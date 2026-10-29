@@ -1,0 +1,52 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "royal-felt",
+  "main": "workers/index.ts",
+  "compatibility_date": "2026-01-15",
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["17 3 * * *"]
+  },
+  "assets": {
+    "directory": "./out",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "royal-felt",
+      "database_id": "191156f6-aae4-421e-841a-ade1c8be70c5"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TABLE",
+        "class_name": "TableDO"
+      },
+      {
+        "name": "TOURNAMENT",
+        "class_name": "TournamentDO"
+      },
+      {
+        "name": "LOBBY",
+        "class_name": "LobbyDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["TableDO"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["TournamentDO"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["LobbyDO"]
+    }
+  ]
+}

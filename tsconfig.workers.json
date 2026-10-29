@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2021"],
+    "types": ["@cloudflare/workers-types"],
+    "noEmit": true
+  },
+  "include": ["workers/**/*.ts", "src/lib/poker-engine/**/*.ts"],
+  "exclude": ["node_modules"]
+}
