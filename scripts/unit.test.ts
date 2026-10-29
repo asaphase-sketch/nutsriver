@@ -484,6 +484,32 @@ describe('replay state machine', () => {
     expect(fin.pot).toBe(0)
   })
 
+  test('winner badge shows NET (won − committed), not the gross pot', () => {
+    // Regression (production, hand #437): BB posts 2, SB folds → uncalled 1
+    // returns; BB wins pot 2 but only profited +1 (invested 1 net). The badge
+    // must derive from won − committedTotal, never from won alone.
+    const participants = [P('Sb', 1), P('Bb', 1)]
+    const trail: HandTrailAction[] = [
+      { n: 1, street: 'PREFLOP', act: 'post', who: 'Sb', amt: 1 },
+      { n: 2, street: 'PREFLOP', act: 'post', who: 'Bb', amt: 2 },
+      { n: 3, street: 'PREFLOP', act: 'fold', who: 'Sb' },
+      { n: 4, street: 'PREFLOP', act: 'refund', who: 'Bb', amt: 1 },
+      { n: 5, street: 'SHOWDOWN', act: 'win', who: 'Bb', amt: 2 },
+    ]
+    const states = buildReplayStates(participants, trail)
+    const fin = states[states.length - 1]
+    const bb = fin.seats.find((x) => x.name === 'Bb')!
+    expect(bb.winner).toBe(true)
+    expect(bb.won).toBe(2)
+    expect(bb.committedTotal).toBe(1) // post-refund ground truth from participants
+    const net = bb.won - bb.committedTotal
+    expect(net).toBe(1) // badge renders "+1", not the misleading "+2"
+    const nets = replayNets(participants, trail)
+    expect(nets.get('u:Sb')).toBe(-1)
+    expect(nets.get('u:Bb')).toBe(1)
+    expect([...nets.values()].reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
   test('malformed trail never crashes — steps are skipped gracefully', () => {
     const junk = [
       { n: 1, street: 'PREFLOP', act: 'raise' }, // missing who

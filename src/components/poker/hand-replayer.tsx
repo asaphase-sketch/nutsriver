@@ -128,9 +128,24 @@ function ReplaySeatPlate({
             {label}
           </span>
         )}
-        {isWinner && seat.won > 0 && (
-          <span className="text-[10px] font-bold leading-3 text-amber-300">+{formatChips(seat.won)}</span>
-        )}
+        {isWinner && seat.won > 0 && (() => {
+          // NET (won − committed, post-refund ground truth) — not the gross
+          // pot: a winner who posted more than the pot (uncalled refund,
+          // lost side pot) must never read as "+pot". Zero nets stay quiet.
+          const net = seat.won - seat.committedTotal
+          if (net === 0) return null
+          return (
+            <span
+              className={cn(
+                'text-[10px] font-bold leading-3',
+                net > 0 ? 'text-amber-300' : 'text-red-300',
+              )}
+            >
+              {net > 0 ? '+' : '−'}
+              {formatChips(Math.abs(net))}
+            </span>
+          )
+        })()}
       </div>
     </div>
   )
