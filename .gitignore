@@ -86,3 +86,5 @@ scripts/e2e-socket-check.ts
 scripts/namespace-matrix.ts
 scripts/probe-clock.ts
 wrangler-ci.log
+worklog.md
+audit/
