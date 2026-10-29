@@ -4,6 +4,12 @@
   "main": "workers/index.ts",
   "compatibility_date": "2026-01-15",
   "workers_dev": true,
+  // Free first-party observability (Workers Logs) — tail production errors
+  // without any extra service. 200k events/day on the free plan.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
   "triggers": {
     "crons": ["17 3 * * *"]
   },

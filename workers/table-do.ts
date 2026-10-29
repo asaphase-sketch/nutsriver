@@ -12,6 +12,7 @@ import { PokerTable } from '../src/lib/poker-engine/engine'
 import { botDecide } from '../src/lib/poker-engine/bots'
 import { parseCard, randomIntBelow } from '../src/lib/poker-engine/cards'
 import { buyIn, cashOut, findUser, recordHand, getRobotsPolicy, setRobotsPolicy, type RobotsPolicy } from './store'
+import { captureDiag } from './diag'
 import type { Env } from './env'
 import type { BotContext, ChatMessage, ClientPlayerView, ClientTableView, TableConfig } from '../src/lib/poker-engine/types'
 
@@ -69,6 +70,17 @@ export class TableDO {
   }
 
   private async load() {
+    // TEMP diag: every load failure is captured into D1 (see workers/diag.ts)
+    // before rethrowing, so the production 1101s become debuggable.
+    try {
+      await this.loadInner()
+    } catch (e) {
+      await captureDiag(this.env, `table:${this.cfg.key}`, e)
+      throw e
+    }
+  }
+
+  private async loadInner() {
     const savedEngine = await this.state.storage.get<string>('engine')
     const savedChat = await this.state.storage.get<string>('chat')
     try {

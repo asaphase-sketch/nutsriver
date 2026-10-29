@@ -15,12 +15,13 @@ import {
   ensureSchema, createUser, findUserByUsername, findUser, claimTopUp, countAdmins, promoteToAdmin,
   listUsers, adminAdjustChips, setUserBanned, adminOverview, adminActivity,
   listHands, getHand, listPlayerHands, getPlayerHand, listTransactions, getRobotsPolicy, setRobotsPolicy,
-  pruneOldHands, pruneOldTransactions,
+  pruneOldHands, pruneOldTransactions, getConfig,
   createTournament, getTournament, registerForTournament,
   cancelTournament, adminListTournaments, setTournamentFields, listTopUsers,
   listTournaments, myTournamentEntries, tournamentEntries,
 } from './store'
 import { signToken, verifyToken, hashPassword, verifyPassword, parseCookie, sessionCookie, clearedSessionCookie, sessionExpiry } from './auth'
+import { captureDiag } from './diag'
 import type { Env } from './env'
 import type { LobbyTableSummary, TournamentConfig, TournamentLobbyItem } from '../src/lib/poker-engine/types'
 
@@ -174,6 +175,25 @@ const worker: ExportedHandler<Env> = {
     if (path === '/api/auth/me' && request.method === 'GET') {
       const session = await sessionOf(request, env)
       return json({ user: session?.user ?? null })
+    }
+
+    // ---- TEMP production diagnostics (remove after recovery) ----
+    if (path === '/api/diag' && request.method === 'GET') {
+      const stored = await getConfig(env.DB, 'diag:last').catch((e) => `d1-read-failed: ${String(e)}`)
+      const probes = []
+      try {
+        const res = await tableStub(env, 'beginners').fetch('https://do/summary')
+        probes.push({ label: 'table:beginners/summary', ok: res.ok, status: res.status, body: (await res.text()).slice(0, 200) })
+      } catch (e) {
+        probes.push({ label: 'table:beginners/summary', ok: false, status: 0, body: `THROW: ${String((e as Error)?.message ?? e)}` })
+      }
+      try {
+        const res = await lobbyStub(env).fetch('https://do/metrics')
+        probes.push({ label: 'lobby/metrics', ok: res.ok, status: res.status, body: (await res.text()).slice(0, 200) })
+      } catch (e) {
+        probes.push({ label: 'lobby/metrics', ok: false, status: 0, body: `THROW: ${String((e as Error)?.message ?? e)}` })
+      }
+      return json({ stored, probes, serverTime: new Date().toISOString() })
     }
 
     // ---- lobby (HTTP fallback — the live path is the LobbyDO socket) ----

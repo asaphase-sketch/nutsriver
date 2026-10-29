@@ -15,6 +15,7 @@
 import type { Env } from './env'
 import type { LobbyTableSummary, TournamentLobbyItem } from '../src/lib/poker-engine/types'
 import { allTableSummaries, tournamentLobbyView } from './views'
+import { captureDiag } from './diag'
 
 const SMALL_ROOM = 15
 const FAST_MS = 10_000
@@ -70,6 +71,16 @@ export class LobbyDO {
   // ---------- websocket lifecycle (hibernation) ----------
 
   async fetch(request: Request): Promise<Response> {
+    // TEMP diag: capture fatal errors into D1 before rethrowing (workers/diag.ts)
+    try {
+      return await this.handleFetch(request)
+    } catch (e) {
+      await captureDiag(this.env, 'lobby', e)
+      throw e
+    }
+  }
+
+  private async handleFetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname.endsWith('/upgrade')) {
       const pair = new WebSocketPair()
@@ -130,6 +141,15 @@ export class LobbyDO {
   // ---------- alarm: the single heartbeat of the lobby ----------
 
   async alarm() {
+    try {
+      await this.alarmInner()
+    } catch (e) {
+      await captureDiag(this.env, 'lobby:alarm', e)
+      throw e
+    }
+  }
+
+  private async alarmInner() {
     const viewers = this.state.getWebSockets().length
     if (viewers === 0) {
       await this.state.storage.deleteAlarm()
