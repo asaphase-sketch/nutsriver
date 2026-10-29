@@ -125,7 +125,9 @@ export function Dashboard({ username }: DashboardProps) {
       }
     }
     tick()
-    const id = setInterval(tick, 15_000)
+    // 30s cadence: the overview is served from the LobbyDO cache (one DO
+    // request per poll) — keeps the admin panel inside the free-tier budget.
+    const id = setInterval(tick, 30_000)
     return () => {
       cancelled = true
       clearInterval(id)
@@ -283,7 +285,7 @@ function OverviewSection({
     <div className="space-y-6">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Key metrics">
         <KpiCard icon={Users} label="Total players" value={formatChips(stats.totalUsers)} sub={`${stats.newUsersToday} joined today`} />
-        <KpiCard icon={Wifi} label="Online now" value={formatChips(overview.onlineNow)} sub={`${overview.activeTables} of 4 tables occupied`} tone="sky" />
+        <KpiCard icon={Wifi} label="Online now" value={formatChips(overview.onlineNow)} sub={`${overview.activeTables} of ${overview.tables.length || 10} tables occupied`} tone="sky" />
         <KpiCard icon={Coins} label="Chips in play" value={formatChipsShort(stats.chipsInCirculation)} sub="play-money, no cash value" tone="amber" />
         <KpiCard icon={Table2} label="Hands today" value={formatChips(stats.handsToday)} sub={`${formatChips(stats.handsTotal)} hands all time`} />
         <KpiCard icon={Bot} label="Robots seated" value={formatChips(overview.botsActive)} sub="controlled from the Robots tab" tone="amber" />
@@ -376,12 +378,11 @@ function OverviewSection({
 
 function SystemStrip({ overview, onGoRobots }: { overview: OverviewData; onGoRobots: () => void }) {
   const enginesUp = overview.tables.filter((t) => !t.offline).length
-  const sockets = overview.tables.reduce((a, t) => a + (Number(t.sockets) || 0), 0)
   const cells = [
     { icon: Gauge, label: 'API', value: 'Operational', ok: true },
     { icon: Database, label: 'Database', value: 'Operational', ok: true },
-    { icon: Radio, label: 'Realtime', value: `${sockets} socket${sockets === 1 ? '' : 's'}`, ok: true },
-    { icon: Table2, label: 'Game engines', value: `${enginesUp}/4 up`, ok: enginesUp > 0 },
+    { icon: Radio, label: 'Realtime', value: `${overview.onlineNow} online`, ok: true },
+    { icon: Table2, label: 'Game engines', value: `${enginesUp}/${overview.tables.length || 10} up`, ok: enginesUp > 0 },
     { icon: Bot, label: 'Robots', value: overview.botsActive > 0 ? `${overview.botsActive} seated` : 'off', ok: true, onClick: onGoRobots },
     { icon: ShieldCheck, label: 'Version', value: overview.version.replace('nutsriver-', 'v'), ok: true },
   ]
@@ -405,7 +406,7 @@ function SystemStrip({ overview, onGoRobots }: { overview: OverviewData; onGoRob
         ))}
       </div>
       <p className="mt-3 text-[11px] text-white/30">
-        All systems report from the live edge. Data refreshes automatically every 15 seconds while this page is visible.
+        All systems report from the live edge. Data refreshes automatically every 30 seconds while this page is visible.
       </p>
     </Card>
   )

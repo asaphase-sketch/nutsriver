@@ -352,17 +352,13 @@ const worker: ExportedHandler<Env> = {
         return json({ users: await listUsers(env.DB) })
       }
       if (path === '/api/admin/tables' && request.method === 'GET') {
-        const summaries = await Promise.all(
-          TABLE_CONFIGS.filter((cfg) => !cfg.hidden).map(async (cfg) => {
-            try {
-              const res = await tableStub(env, cfg.key).fetch('https://do/summary')
-              return (await res.json()) as Record<string, unknown>
-            } catch {
-              return null
-            }
-          }),
-        )
-        return json({ tables: summaries.filter(Boolean) })
+        // cached LobbyDO snapshot — no per-table fan-out (free-tier budget)
+        const res = await lobbyStub(env).fetch('https://do/snapshot').catch(() => null)
+        if (res?.ok) {
+          const data = (await res.json()) as { tables: LobbyTableSummary[] }
+          return json({ tables: data.tables ?? [] })
+        }
+        return json({ tables: [] })
       }
       if (path === '/api/admin/chips' && request.method === 'POST') {
         const body = await readJson<{ userId?: string; delta?: number; reason?: string }>(request)
@@ -390,26 +386,34 @@ const worker: ExportedHandler<Env> = {
       }
 
       // ---- dashboard overview: stats + activity + live table metrics ----
+      // ONE LobbyDO snapshot serves table metrics — the previous per-table
+      // fan-out burned 10 DO requests per admin poll and helped exhaust the
+      // free-tier DO quota (incident 2026-10-29).
       if (path === '/api/admin/overview' && request.method === 'GET') {
-        const [stats, activity, metrics] = await Promise.all([
+        const [stats, activity, snapshot] = await Promise.all([
           adminOverview(env.DB),
           adminActivity(env.DB),
-          Promise.all(
-            TABLE_CONFIGS.filter((cfg) => !cfg.hidden).map(async (cfg) => {
-              try {
-                const res = await tableStub(env, cfg.key).fetch('https://do/metrics')
-                if (res.ok) return (await res.json()) as Record<string, unknown>
-              } catch {
-                /* table unreachable */
-              }
-              return { tableKey: cfg.key, name: cfg.name, humansSeated: 0, humansConnected: 0, botsSeated: 0, inHand: false, handsPlayed: 0, avgPot: 0, sockets: 0, offline: true }
-            }),
-          ),
+          lobbyStub(env)
+            .fetch('https://do/snapshot')
+            .then((res) => (res.ok ? (res.json() as Promise<{ tables: LobbyTableSummary[] }>) : null))
+            .catch(() => null),
         ])
-        const onlineNow = metrics.reduce((a, m) => a + (Number(m.humansConnected) || 0), 0)
-        const botsActive = metrics.reduce((a, m) => a + (Number(m.botsSeated) || 0), 0)
-        const activeTables = metrics.filter((m) => Number(m.humansSeated) > 0).length
-        return json({ stats, activity, tables: metrics, onlineNow, botsActive, activeTables, version: VERSION, serverTime: new Date().toISOString() })
+        const tables = (snapshot?.tables ?? []).map((t) => ({
+          tableKey: t.tableKey,
+          name: t.name,
+          humansSeated: t.humansSeated,
+          humansConnected: t.humansConnected,
+          botsSeated: t.botsSeated,
+          inHand: t.inHand,
+          handsPlayed: t.handsPlayed,
+          avgPot: t.avgPot,
+          sockets: t.humansConnected,
+          offline: false,
+        }))
+        const onlineNow = tables.reduce((a, m) => a + (Number(m.humansConnected) || 0), 0)
+        const botsActive = tables.reduce((a, m) => a + (Number(m.botsSeated) || 0), 0)
+        const activeTables = tables.filter((m) => Number(m.humansSeated) > 0).length
+        return json({ stats, activity, tables, onlineNow, botsActive, activeTables, version: VERSION, serverTime: new Date().toISOString() })
       }
 
       // ---- hand history: list across all tables, then drill into one ----

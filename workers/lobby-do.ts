@@ -8,19 +8,22 @@
  *   last viewer leaves (alarm cleared) and wakes on the next connection.
  * - One alarm fans out to table DOs + tournament DOs in parallel and
  *   broadcasts ONE combined payload; per-client cost is zero.
- * - Cadence adapts to room size: 10s for a small room (snappy), 30s when the
- *   room is busy (request budget scales for the 100-CCU target).
+ * - Cadence adapts to room size: 15s for a small room (snappy), 45s when the
+ *   room is busy (request budget scales for the 100-CCU target). Idle tables
+ *   refresh round-robin, a few per tick, to respect the free-tier DO budget.
  * - HTTP /snapshot serves the cached payload for the /api/lobby fallback.
  */
 import type { Env } from './env'
 import type { LobbyTableSummary, TournamentLobbyItem } from '../src/lib/poker-engine/types'
-import { allTableSummaries, tournamentLobbyView } from './views'
+import { TABLE_CONFIGS, tableSummariesForKeys, tournamentLobbyView } from './views'
 import { captureDiag } from './diag'
 
 const SMALL_ROOM = 15
-const FAST_MS = 10_000
-const SLOW_MS = 30_000
-const MAX_CACHE_AGE_MS = 60_000
+const FAST_MS = 15_000
+const SLOW_MS = 45_000
+const MAX_CACHE_AGE_MS = 90_000
+/** Idle tables refreshed per heartbeat (round-robin) — keeps DO requests inside the free tier. */
+const IDLE_REFRESH_PER_TICK = 3
 
 interface LobbyPayload {
   tables: LobbyTableSummary[]
@@ -33,6 +36,7 @@ export class LobbyDO {
   private env: Env
   private cache: LobbyPayload | null = null
   private refreshing: Promise<void> | null = null
+  private rotateIdx = 0
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state
@@ -51,14 +55,41 @@ export class LobbyDO {
     )
   }
 
-  /** Fan out to all table DOs + D1 tournament view — ONE combined fetch round. */
+  /**
+   * Fan out to the tables that NEED a refresh + D1 tournament view — ONE
+   * combined fetch round.
+   *
+   * Request budget (free tier): a full 10-table sweep every 10s costs ~86k
+   * DO requests/day for ONE open lobby tab — the entire allowance (this
+   * exhausted production on 2026-10-29). Instead each heartbeat refreshes
+   * only LIVE tables (humans seated/connected or a hand running) plus a
+   * rotating slice of IDLE ones; unrefreshed tables keep their cached row.
+   */
   private async refresh(): Promise<void> {
     if (this.refreshing) return this.refreshing
     this.refreshing = (async () => {
-      const [tables, tournaments] = await Promise.all([
-        allTableSummaries(this.env),
+      const allKeys = TABLE_CONFIGS.filter((cfg) => !cfg.hidden).map((cfg) => cfg.key)
+      const cachedTables = this.cache?.tables ?? []
+      const byKey = new Map(cachedTables.map((t) => [t.tableKey, t]))
+      const live = allKeys.filter((key) => {
+        const t = byKey.get(key)
+        // unknown (never loaded) tables always count as live → first sweep is full
+        return !t || t.humansSeated > 0 || t.humansConnected > 0 || t.inHand
+      })
+      const idle = allKeys.filter((key) => !live.includes(key))
+      const idleSlice: string[] = []
+      for (let i = 0; i < Math.min(IDLE_REFRESH_PER_TICK, idle.length); i++) {
+        idleSlice.push(idle[(this.rotateIdx + i) % idle.length]!)
+      }
+      this.rotateIdx = (this.rotateIdx + idleSlice.length) % Math.max(1, idle.length)
+      const [refreshed, tournaments] = await Promise.all([
+        tableSummariesForKeys(this.env, [...live, ...idleSlice]),
         tournamentLobbyView(this.env.DB, this.env, null).catch(() => [] as TournamentLobbyItem[]),
       ])
+      const fresh = new Map(refreshed.map((t) => [t.tableKey, t]))
+      const tables: LobbyTableSummary[] = allKeys.map((key) => fresh.get(key) ?? byKey.get(key) ?? null).filter(
+        (t): t is LobbyTableSummary => t != null,
+      )
       this.cache = { tables, tournaments, at: Date.now() }
     })()
     try {

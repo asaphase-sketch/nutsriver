@@ -214,6 +214,10 @@ export class PokerTable {
       p.connected = true
       p.disconnectedAt = null
       this.emitChange()
+      // A returning player can be the second eligible seat at a dormant
+      // table (idle tables have no alarm — see host hkIntervalMs) — without
+      // this, the next hand would never start until someone re-seated.
+      this.maybeScheduleStart()
     }
   }
 

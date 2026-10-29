@@ -44,7 +44,6 @@ const BOT_NAMES = [
 let botNameIdx = 0
 const nextBotName = () => BOT_NAMES[botNameIdx++ % BOT_NAMES.length]!
 
-const HOUSEKEEPING_MS = 10_000
 const MAX_CHAT = 60
 
 /** Prize fractions by finishing place, normalized to sum = 1. */
@@ -86,7 +85,6 @@ export class TournamentDO {
   private bountyPaid = 0
   private chats: ChatMessage[] = []
   private botDue = new Map<string, number>()
-  private hkAt = 0
   private dirty = false
   private loaded: Promise<void> | null = null
   private ioJobs: Promise<unknown>[] = []
@@ -169,7 +167,6 @@ export class TournamentDO {
       this.tables.set(internal, table)
     }
     const now = Date.now()
-    this.hkAt = now + HOUSEKEEPING_MS
     // scheduled tournaments start even if nobody is polling the lobby
     if (this.tstate === 'registering' && this.cfg.startAt && now >= this.cfg.startAt) {
       const d1 = await this.d1EntryCount()
@@ -270,7 +267,15 @@ export class TournamentDO {
     for (const due of this.botDue.values()) candidates.push(due)
     if (this.levelEndsAt != null && this.tstate === 'running') candidates.push(this.levelEndsAt)
     if (this.tstate === 'registering' && this.cfg?.startAt) candidates.push(this.cfg.startAt)
-    candidates.push(this.hkAt)
+    // No periodic housekeeping for tournaments: disconnected players auto-fold
+    // via engine autoAct deadlines and blind off — all demand-driven wakes.
+    // A finished/silent tournament must SLEEP completely (free-tier DO request
+    // budget: an always-armed 10s heartbeat per DO burns ~86k requests/day).
+    if (candidates.length === 0) {
+      const current = await this.state.storage.getAlarm()
+      if (current != null) await this.state.storage.deleteAlarm()
+      return
+    }
     const next = Math.min(...candidates)
     const current = await this.state.storage.getAlarm()
     if (force || current == null || next < current - 250) {
@@ -295,11 +300,6 @@ export class TournamentDO {
         }
       }
       for (const table of this.tables.values()) table.drain(now)
-    }
-    if (now >= this.hkAt) {
-      this.hkAt = now + HOUSEKEEPING_MS
-      // tournaments: disconnected players are NOT stood up — they auto-fold
-      // (engine autoAct) and blind off until they return or bust
     }
     await this.drainIo()
     await this.persistIfDirty()

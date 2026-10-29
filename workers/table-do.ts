@@ -39,6 +39,8 @@ let botNameIdx = 0
 const nextBotName = () => BOT_NAMES[botNameIdx++ % BOT_NAMES.length]!
 
 const HOUSEKEEPING_MS = 10_000
+/** Idle-table ghost sweep: a seated-but-disconnected human awaits stand-up. */
+const GHOST_HK_MS = 60_000
 const MAX_CHAT = 60
 
 export class TableDO {
@@ -215,7 +217,16 @@ export class TableDO {
     const wake = engineWake ?? this.table?.nextWakeAt() ?? null
     if (wake != null) candidates.push(wake)
     if (this.botDue != null) candidates.push(this.botDue)
-    candidates.push(this.hkAt)
+    // Housekeeping is demand-driven: an idle table must SLEEP completely or
+    // its 10s heartbeat alone burns ~86k DO requests/day — the whole free
+    // tier budget (production incident 2026-10-29: quota exhausted, every
+    // table unreachable). See hkIntervalMs() for what keeps it alive.
+    if (this.hkIntervalMs() != null) candidates.push(this.hkAt)
+    if (candidates.length === 0) {
+      const current = await this.state.storage.getAlarm()
+      if (current != null) await this.state.storage.deleteAlarm()
+      return
+    }
     const next = Math.min(...candidates)
     const current = await this.state.storage.getAlarm()
     // Never postpone from message handlers — a concurrent event may have set an
@@ -223,6 +234,19 @@ export class TableDO {
     if (force || current == null || next < current - 250) {
       await this.state.storage.setAlarm(next)
     }
+  }
+
+  /**
+   * How often housekeeping should run right now, or null when the table can
+   * sleep. Only disconnected humans need sweeping (engine.housekeeping stands
+   * THEM up); bots and empty seats never require a heartbeat.
+   */
+  private hkIntervalMs(): number | null {
+    if (!this.table) return null
+    if (this.state.getWebSockets().length > 0) return HOUSEKEEPING_MS
+    const snap = this.table.snapshotFor(null)
+    const ghostSeated = snap.seats.some((s) => s.status !== 'EMPTY' && !s.isBot && !s.connected)
+    return ghostSeated ? GHOST_HK_MS : null
   }
 
   async alarm() {
@@ -235,8 +259,9 @@ export class TableDO {
       this.botDue = null
       this.driveBot(now)
     }
-    if (now >= this.hkAt) {
-      this.hkAt = now + HOUSEKEEPING_MS
+    const hkInterval = this.hkIntervalMs()
+    if (hkInterval != null && now >= this.hkAt) {
+      this.hkAt = now + hkInterval
       this.table.housekeeping(now)
     }
     this.table.drain(now)

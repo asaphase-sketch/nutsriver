@@ -797,3 +797,36 @@ describe('betting rules & payout integrity', () => {
     expect(s.trail.some((a) => a.act === 'refund')).toBe(false)
   })
 })
+
+describe('dormant table wake (engine contract for DO sleep)', () => {
+  // The hosts sleep idle tables completely (no alarm) to stay inside the
+  // free-tier DO request budget. That makes the ENGINE responsible for
+  // re-arming a lost hand start the moment the room is playable again.
+  test('returning players re-arm the hand start that a dormant table never scheduled', () => {
+    let allowHands = false
+    const table = new PokerTable(
+      { key: 't:wake', name: 'Wake', smallBlind: 1, bigBlind: 2, maxSeats: 9, minBuyIn: 40, maxBuyIn: 600, botCount: 0 },
+      { onChange: () => {}, onHandFinished: () => {}, onCashOut: () => {}, canStartHand: () => allowHands },
+      { actionMs: 5_000, showdownMs: 20, awardMs: 20, streetMs: 10, startMs: 60_000 },
+    )
+    table.sitDown('u1', 'U1', 0, 500)
+    table.sitDown('u2', 'U2', 1, 500)
+    // hands disallowed at seat time → nothing scheduled; host may delete its alarm
+    expect(table.nextWakeAt()).toBe(null)
+    // both players vanish (browser closed) — cash tables mark them sitting out
+    table.onDisconnect('u1')
+    table.onDisconnect('u2')
+    allowHands = true
+    // first player back: still the only eligible seat → no start yet
+    table.onConnect('u1')
+    expect(table.nextWakeAt()).toBe(null)
+    // second player back and both sit in → the start continuation must be armed
+    table.onConnect('u2')
+    table.toggleSitOut('u1', false)
+    table.toggleSitOut('u2', false)
+    expect(table.nextWakeAt()).not.toBe(null)
+    table.drain(Date.now() + 60_000)
+    expect(table.snapshotFor(null).phase).not.toBe('WAITING')
+    table.destroy()
+  })
+})

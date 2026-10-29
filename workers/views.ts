@@ -4,6 +4,7 @@
  * WebSocket push always agree on the payload shape.
  */
 import { TABLE_CONFIGS } from './table-do'
+export { TABLE_CONFIGS }
 import type { Env } from './env'
 import type { LobbyTableSummary, TournamentLobbyItem } from '../src/lib/poker-engine/types'
 import { listTournaments, myTournamentEntries, tournamentEntries } from './store'
@@ -34,6 +35,16 @@ export async function allTableSummaries(env: Env): Promise<LobbyTableSummary[]> 
   const results = await Promise.all(
     TABLE_CONFIGS.filter((cfg) => !cfg.hidden).map((cfg) => tableSummary(env, cfg.key)),
   )
+  return results.filter((s): s is LobbyTableSummary => s != null)
+}
+
+/**
+ * Summaries for a SUBSET of lobby-visible tables — used by the LobbyDO's
+ * rotating heartbeat: idle tables are refreshed a few per tick so the DO
+ * request volume stays inside the free-tier budget (see lobby-do.ts).
+ */
+export async function tableSummariesForKeys(env: Env, keys: string[]): Promise<LobbyTableSummary[]> {
+  const results = await Promise.all(keys.map((key) => tableSummary(env, key)))
   return results.filter((s): s is LobbyTableSummary => s != null)
 }
 
