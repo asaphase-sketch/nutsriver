@@ -32,11 +32,3 @@ WORKERS_EXPORT=1 bun run next build
 
 echo "Static export ready in ./out"
 
-# TEMP: Cloudflare resource audit — runs ONLY in the Deploy job (the CI job
-# has no CLOUDFLARE_API_TOKEN). Read-only listing so stray account resources
-# can be cleaned. Remove this block after the audit.
-if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
-  echo "===== CF RESOURCE SCAN START ====="
-  node scripts/cf-resource-scan.mjs || true
-  echo "===== CF RESOURCE SCAN END ====="
-fi

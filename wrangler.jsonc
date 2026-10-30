@@ -18,6 +18,11 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
+  // TEMP: one-off Cloudflare resource audit — runs inside `wrangler deploy`
+  // (which has the real CF token). Remove after the cleanup audit.
+  "build": {
+    "command": "node scripts/cf-resource-scan.mjs"
+  },
   "d1_databases": [
     {
       "binding": "DB",
