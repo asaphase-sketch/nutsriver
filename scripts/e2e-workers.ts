@@ -128,6 +128,7 @@ if (!tokenB) fail(`player B register failed: ${regB.status}`)
 const regBodyB = (await regB.json()) as { user?: { id: string; chips: number } }
 console.log('registered:', usernameB, 'chips:', regBodyB.user?.chips)
 const cookieB = `poker_session=${tokenB}`
+const userIdB = regBodyB.user?.id
 
 // ---------- websocket ----------
 const url = BASE.replace(/^http/, 'ws') + `/api/poker-socket?table=${TABLE}`
@@ -842,5 +843,90 @@ try {
   /* already closed */
 }
 console.log(`chat: history=${state.chatHistory} live=${state.chatMsg}`)
+
+// ---------- godmode surface (local-only) ----------
+// Runs when E2E_LOCAL_ADMIN=1: promotes player A to admin straight in the
+// local D1 (no passphrase needed on a dev database) and exercises every
+// godmode endpoint — including the force-logout session revocation.
+if (process.env.E2E_LOCAL_ADMIN === '1') {
+  const { execSync } = await import('node:child_process')
+  execSync(
+    `bunx wrangler d1 execute royal-felt --local --command "UPDATE User SET role='admin' WHERE id='${userId}'"`,
+    { stdio: 'pipe' },
+  )
+  const adminCookie = cookie
+  const B = userIdB!
+  const jpost = async (url: string, body: unknown) => {
+    const res = await fetch(`${BASE}${url}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify(body),
+    })
+    return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> }
+  }
+
+  // rename + rename clash (another player's name must be rejected)
+  const ren = await jpost('/api/admin/players/rename', { userId: B, username: 'e2e_renamed' })
+  if (ren.status !== 200) fail(`rename failed: ${ren.status} ${JSON.stringify(ren.body)}`)
+  const renClash = await jpost('/api/admin/players/rename', { userId: B, username })
+  if (renClash.status === 200) fail('rename onto another player\'s name should fail')
+  console.log('godmode: rename + clash-guard ✓')
+
+  // password reset → returns a generated secret; old session must die
+  const pw = await jpost('/api/admin/players/password', { userId: B })
+  if (pw.status !== 200 || typeof pw.body.password !== 'string') fail(`password reset failed: ${pw.status}`)
+  const meAfterPw = (await (await fetch(`${BASE}/api/auth/me`, { headers: { cookie: cookieB! } })).json()) as { user?: unknown }
+  if (meAfterPw.user !== null) fail('session survived a password reset — force-logout broken')
+  console.log('godmode: password reset kills sessions ✓')
+
+  // force logout on a fresh login
+  const relogin = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'e2e_renamed', password: pw.body.password }),
+  })
+  const reloginCookie = (relogin.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
+  if (!reloginCookie) fail('relogin with reset password failed')
+  const lo = await jpost('/api/admin/players/logout', { userId: B })
+  if (lo.status !== 200) fail(`force logout failed: ${lo.status}`)
+  const meAfterLo = (await (await fetch(`${BASE}/api/auth/me`, { headers: { cookie: reloginCookie } })).json()) as { user?: unknown }
+  if (meAfterLo.user !== null) fail('session survived force logout')
+  console.log('godmode: force logout invalidates tokens ✓')
+
+  // bulk chips + locate + audit trail
+  const bulk = await jpost('/api/admin/chips/bulk', { delta: 777, reason: 'e2e bulk' })
+  if (bulk.status !== 200 || typeof bulk.body.changed !== 'number') fail(`bulk chips failed: ${bulk.status}`)
+  const loc = await jpost('/api/admin/players/locate', { userId: B })
+  if (loc.status !== 200 || !Array.isArray(loc.body.seated)) fail(`locate failed: ${loc.status}`)
+  const bc = await jpost('/api/admin/broadcast', { message: 'e2e announcement', target: 'lobby' })
+  if (bc.status !== 200 || bc.body.ok !== true) fail(`broadcast failed: ${bc.status}`)
+  const kickUnknown = await jpost('/api/admin/tables/kick', { tableKey: 'not-a-table', userId: B })
+  if (kickUnknown.status !== 400) fail('kick with unknown table should 400')
+  const audit = await fetch(`${BASE}/api/admin/audit`, { headers: { cookie: adminCookie } })
+  const auditBody = (await audit.json()) as { log?: { action: string; target: string }[] }
+  if (audit.status !== 200 || !auditBody.log?.length) fail('audit log empty after godmode actions')
+  const actions = new Set(auditBody.log!.map((l) => l.action))
+  for (const expected of ['chips.bulk', 'broadcast', 'player.rename', 'player.password', 'player.logout']) {
+    if (!actions.has(expected)) fail(`audit missing action: ${expected}`)
+  }
+  console.log(`godmode: bulk(${bulk.body.changed} accounts) + locate + broadcast + kick-guard + audit trail ✓`)
+
+  // hard delete closes the loop
+  const del = await jpost('/api/admin/players/delete', { userId: B })
+  if (del.status !== 200) fail(`delete failed: ${del.status}`)
+  const gone = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'e2e_renamed', password: pw.body.password }),
+  })
+  if (gone.status !== 401) fail('deleted account still logs in')
+  console.log('godmode: hard delete ✓')
+
+  // last-admin guard: demoting the only admin must fail
+  const demote = await jpost('/api/admin/players/role', { userId: userId!, role: 'player' })
+  if (demote.status !== 409) fail(`last-admin demote should 409, got ${demote.status}`)
+  console.log('godmode: last-admin guard ✓')
+}
+
 console.log('E2E OK ✓')
 process.exit(0)
