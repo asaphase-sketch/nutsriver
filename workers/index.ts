@@ -354,26 +354,7 @@ const worker: ExportedHandler<Env> = {
       return json({ user })
     }
 
-    // ---- TEMP one-time admin bootstrap (removed immediately after use) ----
-    if (path === '/api/admin/bootstrap' && request.method === 'POST') {
-      const key = request.headers.get('x-bootstrap-key') ?? ''
-      if (!env.BOOTSTRAP_KEY || !timingSafeHexEqual(await sha256Hex(key), env.BOOTSTRAP_KEY)) {
-        return json({ error: 'Not found' }, { status: 404 })
-      }
-      const body = await readJson<{ username?: string; password?: string }>(request)
-      const username = String(body?.username ?? '').trim()
-      const password = String(body?.password ?? '')
-      if (!username || password.length < 8 || password.length > 100) return json({ error: 'Bad input' }, { status: 400 })
-      const record = await findUserByUsername(env.DB, username)
-      if (!record) return json({ error: 'User not found' }, { status: 404 })
-      if (record.banned) await setUserBanned(env.DB, record.id, false)
-      await setUserRole(env.DB, record.id, 'admin')
-      await setPasswordHash(env.DB, record.id, await hashPassword(password))
-      await adminLog(env.DB, record.id, record.username, 'system.bootstrap', record.username, 'one-time credential restore')
-      return json({ ok: true, username: record.username, role: 'admin' })
-    }
-
-    if (path.startsWith('/api/admin/') && path !== '/api/admin/claim' && path !== '/api/admin/bootstrap') {
+    if (path.startsWith('/api/admin/') && path !== '/api/admin/claim') {
       const session = await sessionOf(request, env)
       if (!session) return json({ error: 'Unauthorized' }, { status: 401 })
       if (session.user.role !== 'admin') return json({ error: 'Forbidden — admin only' }, { status: 403 })

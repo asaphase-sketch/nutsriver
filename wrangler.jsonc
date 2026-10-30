@@ -18,10 +18,6 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
-  "vars": {
-    // TEMP one-time admin bootstrap (digest only; route+var removed right after use)
-    "BOOTSTRAP_KEY": "dc2caa38fb0fd25105929626e1d767e28d1f7afd5a2cdc13abc88c9af7a00c7b"
-  },
   "d1_databases": [
     {
       "binding": "DB",
