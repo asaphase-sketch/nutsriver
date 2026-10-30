@@ -2,9 +2,13 @@
  * Seat anchoring around the oval felt.
  *
  * Layouts are SELF-CENTRIC: display slot 0 is always the bottom-center seat
- * (the viewing player), and the remaining slots continue clockwise around the
- * ellipse. The client maps every real seatIndex to a display slot via a
- * rotation offset so the local player automatically renders center-south.
+ * (the viewing player), and the remaining slots continue CLOCKWISE as seen on
+ * screen — bottom → LEFT → top → right. That is the PokerStars/GGPoker
+ * convention: action moves clockwise, so the player who acts after the hero
+ * (seatIndex+1) renders on the hero's LEFT. Mirroring this (slot 1 on the
+ * right) made the whole table read right-oriented — fixed 2026-10-30.
+ * The client maps every real seatIndex to a display slot via a rotation
+ * offset so the local player automatically renders center-south.
  * Positions are percentages of the table container; the seat panel is
  * centered on the anchor with translate(-50%,-50%).
  */
@@ -34,10 +38,12 @@ const SEAT_X_MAX = 86
 const SEAT_Y_MIN = 18
 const SEAT_Y_MAX = 88
 
-/** seat on an ellipse: φ measured clockwise on screen starting at the bottom */
+/** seat on an ellipse: φ measured screen-clockwise from the bottom —
+ *  increasing φ walks bottom → LEFT → top → right (true clockwise: the
+ *  next seat is always on the previous seat's left) */
 function onOval(phiDeg: number, rx = 46, ry = 40): { x: number; y: number } {
   const rad = (phiDeg * Math.PI) / 180
-  const rawX = 50 + rx * Math.sin(rad)
+  const rawX = 50 - rx * Math.sin(rad)
   const rawY = 50 + ry * Math.cos(rad)
   const x = Math.min(SEAT_X_MAX, Math.max(SEAT_X_MIN, rawX))
   const y = Math.min(SEAT_Y_MAX, Math.max(SEAT_Y_MIN, rawY))

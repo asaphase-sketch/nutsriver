@@ -44,6 +44,39 @@ describe('seat anchors', () => {
     }
   })
 
+  test('ORIENTATION: seats run bottom → left → top → right (poker clockwise)', () => {
+    // Poker action moves clockwise = to each player's left, so the seat AFTER
+    // the hero (slot 1) must render on the hero's LEFT — the PokerStars /
+    // GGPoker convention. Regression guard: a mirrored table (slot 1 on the
+    // right) reads right-oriented and must never ship again.
+    // 9-max ring: slot1 bottom-left, slot2 left, slot4 top-center,
+    // slot6 right, slot7 bottom-right.
+    const s1 = seatAnchor(1, 9, 0)
+    expect(s1.x).toBeLessThan(50)
+    expect(s1.y).toBeGreaterThan(50)
+    const s2 = seatAnchor(2, 9, 0)
+    expect(s2.x).toBeLessThanOrEqual(28)
+    const s4 = seatAnchor(4, 9, 0)
+    expect(s4.y).toBeLessThan(50)
+    expect(s4.x).toBeLessThan(50)
+    const s5 = seatAnchor(5, 9, 0)
+    expect(s5.y).toBeLessThan(50)
+    expect(s5.x).toBeGreaterThan(50)
+    const s6 = seatAnchor(6, 9, 0)
+    expect(s6.x).toBeGreaterThanOrEqual(72)
+    const s7 = seatAnchor(7, 9, 0)
+    expect(s7.x).toBeGreaterThan(50)
+    expect(s7.y).toBeGreaterThan(50)
+    // 6-max: seat after hero is bottom-left too
+    const s1_6 = seatAnchor(1, 6, 0)
+    expect(s1_6.x).toBeLessThan(50)
+    expect(s1_6.y).toBeGreaterThan(50)
+    // heads-up: the opponent faces the hero at top-center
+    const s1_2 = seatAnchor(1, 2, 0)
+    expect(s1_2.x).toBe(50)
+    expect(s1_2.y).toBeLessThan(50)
+  })
+
   test('rotation wraps modularly across the seat ring', () => {
     // slot of seat s under rotation r === slot of (s - r) under rotation 0
     // (both in range) — e.g. rotating seat 8 to the bottom makes seat 0
