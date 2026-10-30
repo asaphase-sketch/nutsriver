@@ -37,10 +37,29 @@ export class LobbyDO {
   private cache: LobbyPayload | null = null
   private refreshing: Promise<void> | null = null
   private rotateIdx = 0
+  /** last admin announcement — replayed to newly connecting viewers for 2 min */
+  private announcement: { message: string; at: number } | null = null
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state
     this.env = env
+  }
+
+  private async loadAnnouncement() {
+    if (this.announcement) return
+    try {
+      const raw = await this.state.storage.get<string>('announcement')
+      if (raw) this.announcement = JSON.parse(raw) as { message: string; at: number }
+    } catch {
+      /* none saved */
+    }
+  }
+
+  /** Announcement worth replaying (≤2 min old), or undefined. */
+  private freshAnnouncement() {
+    if (!this.announcement) return undefined
+    if (Date.now() - this.announcement.at > 120_000) return undefined
+    return this.announcement
   }
 
   // ---------- snapshot ----------
@@ -117,8 +136,9 @@ export class LobbyDO {
       const pair = new WebSocketPair()
       this.state.acceptWebSocket(pair[1], ['lobby'])
       // greet with the current snapshot immediately (refresh if cache is cold)
+      await this.loadAnnouncement()
       const payload = await this.snapshot()
-      this.send(pair[1], { t: 'lobby', ...payload })
+      this.send(pair[1], { t: 'lobby', ...payload, announcement: this.freshAnnouncement() })
       await this.arm()
       return new Response(null, { status: 101, webSocket: pair[0] })
     }
@@ -134,7 +154,8 @@ export class LobbyDO {
       })
     }
     if (url.pathname.endsWith('/announce')) {
-      // admin broadcast — push an announcement to every open lobby socket
+      // admin broadcast — push an announcement to every open lobby socket AND
+      // cache it so viewers connecting within 2 minutes still see it
       let message = ''
       try {
         const body = (await request.json()) as { message?: string }
@@ -143,9 +164,12 @@ export class LobbyDO {
         return Response.json({ ok: false, error: 'Invalid JSON' }, { status: 400 })
       }
       if (!message) return Response.json({ ok: false, error: 'Message required' }, { status: 400 })
+      this.announcement = { message, at: Date.now() }
+      await this.state.storage.put('announcement', JSON.stringify(this.announcement))
+      const payload = { t: 'announcement', message: this.announcement.message, at: this.announcement.at }
       const viewers = this.state.getWebSockets().length
       for (const ws of this.state.getWebSockets()) {
-        this.send(ws, { t: 'announcement', message, at: Date.now() })
+        this.send(ws, payload)
       }
       return Response.json({ ok: true, viewers })
     }
@@ -154,8 +178,9 @@ export class LobbyDO {
 
   async webSocketOpen(ws: WebSocket) {
     // hibernation revival: greet again + keep the alarm alive
+    await this.loadAnnouncement()
     const payload = await this.snapshot()
-    this.send(ws, { t: 'lobby', ...payload })
+    this.send(ws, { t: 'lobby', ...payload, announcement: this.freshAnnouncement() })
     await this.arm()
   }
 

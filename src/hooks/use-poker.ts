@@ -195,6 +195,15 @@ export function usePoker(): PokerClient {
           // so this replaces per-client polling entirely (charter §2)
           lobbyLiveRef.current = true
           setLobbyTables(data.tables as LobbyTableSummary[])
+          // a recent admin announcement is replayed on (re)connect
+          if (data.announcement?.message) {
+            const a = {
+              id: String(data.announcement.at ?? Date.now()),
+              message: String(data.announcement.message).slice(0, 200),
+              at: Number(data.announcement.at) || Date.now(),
+            }
+            setAnnouncements((prev) => (prev.some((x) => x.id === a.id) ? prev : [...prev, a].slice(-3)))
+          }
           if (Array.isArray(data.tournaments)) {
             setTournaments(
               (data.tournaments as TournamentLobbyItem[]).map((t) => {
