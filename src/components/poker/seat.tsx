@@ -21,6 +21,8 @@ interface SeatProps {
   dealNonce?: number
   dealIndex?: number
   seatCount?: number
+  /** showdown: codes of the cards forming the winner's hand — these pulse */
+  winCards?: Set<string> | null
 }
 
 const ACTION_LABEL: Record<string, string> = {
@@ -48,6 +50,7 @@ export function Seat({
   dealNonce = 0,
   dealIndex = 0,
   seatCount = 1,
+  winCards = null,
 }: SeatProps) {
   // ---- empty seat ----
   if (player.status === 'EMPTY') {
@@ -108,7 +111,9 @@ export function Seat({
                 size={cardSize}
                 animate={dealNonce > 0}
                 delayMs={dealDelay(i)}
-                className={cn(folded && 'grayscale', won && !folded && 'ring-1 ring-amber-300')}
+                flip={!isSelf && player.cardsRevealed}
+                highlight={won && !folded && !!winCards?.has(c)}
+                className={cn(folded && 'grayscale')}
               />
             ) : (
               <PlayingCard
@@ -131,6 +136,7 @@ export function Seat({
           isActor ? 'border-amber-300 shadow-amber-500/20' : 'border-white/10',
           isSelf && 'ring-1 ring-emerald-400/60',
           won && 'border-emerald-300 bg-emerald-950/90',
+          isActor && !urgent && 'actor-glow',
           urgent && 'timer-urgent',
         )}
       >

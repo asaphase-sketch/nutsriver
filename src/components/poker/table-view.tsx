@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { ArrowLeft, Coins, LogOut, Pause, Play, Palette, PlusCircle, RotateCw, Trophy, Volume2, VolumeX } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips, PHASE_LABEL } from '@/lib/poker/cards'
@@ -53,6 +53,7 @@ export function TableView({ poker, view }: TableViewProps) {
   const fourColor = useSyncExternalStore(subscribeFourColor, getFourColor, () => false)
   const [now, setNow] = useState(() => Date.now())
   const { fraction: timeFraction, secondsLeft } = useCountdown(view.actionDeadline, view.actionWindow)
+  const feltRef = useRef<HTMLDivElement>(null)
 
   const tournament = isTournamentTable(view.tableKey)
   const gameType = view.gameType ?? 'holdem'
@@ -173,6 +174,65 @@ export function TableView({ poker, view }: TableViewProps) {
   // pot chip stack tier for the center visual
   const potTier = view.pot >= view.bigBlind * 50 ? 3 : view.pot >= view.bigBlind * 10 ? 2 : view.pot > 0 ? 1 : 0
 
+  // ---------- showdown winning-card highlight (GGPoker standard) ----------
+  // The five cards making each winner's hand — board + hole alike — pulse.
+  const winCardCodes = useMemo(() => {
+    if (view.phase !== 'SHOWDOWN' || !view.lastSummary) return null
+    const set = new Set<string>()
+    for (const r of view.lastSummary.results) {
+      if (r.amount > 0) for (const c of r.cards) set.add(c)
+    }
+    return set
+  }, [view.phase, view.lastSummary])
+
+  // ---------- bet chips fly to the pot when a street completes ----------
+  interface Flight {
+    id: number
+    x: number
+    y: number
+    dx: number
+    dy: number
+  }
+  const [flights, setFlights] = useState<Flight[]>([])
+  const flightIdRef = useRef(0)
+  const prevBetsRef = useRef<Map<number, number>>(new Map())
+  useEffect(() => {
+    const prev = prevBetsRef.current
+    const next = new Map<number, number>()
+    const spawned: Flight[] = []
+    // track hands: a street sweep zeroes every seat's bet while the pot grows
+    const collecting = view.phase === 'PREFLOP' || view.phase === 'FLOP' || view.phase === 'TURN' || view.phase === 'RIVER'
+    if (collecting) {
+      const felt = feltRef.current
+      const w = felt?.clientWidth ?? 400
+      const h = felt?.clientHeight ?? 300
+      for (const p of view.seats) {
+        next.set(p.seatIndex, p.bet)
+        const before = prev.get(p.seatIndex) ?? 0
+        if (before > 0 && p.bet === 0 && p.status !== 'EMPTY') {
+          const anchor = seatAnchor(p.seatIndex, view.maxSeats, rotation)
+          const from = towardCenter(anchor.x, anchor.y, 0.42)
+          spawned.push({
+            id: flightIdRef.current++,
+            x: from.x,
+            y: from.y,
+            dx: ((50 - from.x) / 100) * w,
+            dy: ((50 - from.y) / 100) * h,
+          })
+        }
+      }
+    } else {
+      for (const p of view.seats) next.set(p.seatIndex, p.bet)
+    }
+    prevBetsRef.current = next
+    if (spawned.length === 0) return
+    const ids = new Set(spawned.map((f) => f.id))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot transition animation: spawns only when a street sweep zeroes a bet; flights state is NOT in the deps, so no render loop is possible
+    setFlights((f) => [...f, ...spawned])
+    const t = setTimeout(() => setFlights((f) => f.filter((x) => !ids.has(x.id))), 550)
+    return () => clearTimeout(t)
+  }, [view.seats, view.phase, view.maxSeats, rotation])
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
       {/* table header */}
@@ -266,6 +326,7 @@ export function TableView({ poker, view }: TableViewProps) {
         {/* felt */}
         <section className="flex min-w-0 flex-col gap-3">
           <div
+            ref={feltRef}
             className={cn(
               'felt felt-2 felt-watermark felt-short relative w-full select-none overflow-hidden shadow-2xl shadow-black/60 aspect-[4/4.6] sm:aspect-[16/10.5]',
               'rail-2',
@@ -284,6 +345,16 @@ export function TableView({ poker, view }: TableViewProps) {
                 )}
               </div>
             )}
+
+            {/* bet chips flying to the pot at street sweep (2.5D) */}
+            {flights.map((f) => (
+              <span
+                key={f.id}
+                aria-hidden
+                className="chip-to-pot chip-stack motion-reduce:hidden absolute z-20 h-3.5 w-3.5 rounded-full"
+                style={{ left: `${f.x}%`, top: `${f.y}%`, '--fly-x': `${f.dx}px`, '--fly-y': `${f.dy}px` } as CSSProperties}
+              />
+            ))}
 
             {/* center: pot + board */}
             <div className="absolute left-1/2 top-1/2 z-0 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2">
@@ -306,6 +377,7 @@ export function TableView({ poker, view }: TableViewProps) {
                     size="md"
                     animate={!!view.board[i]}
                     flip={!!view.board[i]}
+                    highlight={!!view.board[i] && !!winCardCodes?.has(view.board[i]!)}
                   />
                 ))}
               </div>
@@ -348,6 +420,7 @@ export function TableView({ poker, view }: TableViewProps) {
                       dealNonce={dealNonce}
                       dealIndex={dealIndexOf.get(p.seatIndex) ?? 0}
                       seatCount={Math.max(2, occupiedSeats.length)}
+                      winCards={winCardCodes}
                     />
                   </div>
                 </div>

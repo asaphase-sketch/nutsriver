@@ -79,6 +79,9 @@ export class PokerTable {
   private trail: HandTrailAction[] = []
   private trailN = 0
   private lastSummary: HandSummary | null = null
+  /** hole cards shown to everyone — populated at showdown AND when an all-in
+   *  runout starts ('cards on their backs', the PokerStars/GGPoker standard).
+   *  Cleared at the start of every hand. */
   private reveals = new Map<string, ShowdownReveal>()
   private winAmounts = new Map<string, number>()
   private handsPlayed = 0
@@ -739,6 +742,10 @@ export class PokerTable {
       this.awardUncontested(alive[0])
       return
     }
+    // all-in runout: betting is finished and at least two hands are racing —
+    // flip every live hand face-up BEFORE the remaining board is dealt, so
+    // clients watch the runout with cards on their backs (worldwide standard)
+    if (this.canActPlayers().length <= 1) this.revealRunout(alive)
     if (this.board.length === 0) this.dealStreet(3, 'FLOP')
     else if (this.board.length === 3) this.dealStreet(1, 'TURN')
     else if (this.board.length === 4) this.dealStreet(1, 'RIVER')
@@ -770,6 +777,22 @@ export class PokerTable {
       this.beginTurn(first)
     }
     this.emitChange()
+  }
+
+  /**
+   * All-in runout reveal: every still-alive hand goes on its back. Entries
+   * carry cards only — desc/best arrive when the real showdown evaluates the
+   * complete board (showdown() overwrites these entries).
+   */
+  private revealRunout(alive: SeatPlayer[]) {
+    let added = false
+    for (const p of alive) {
+      if (!this.reveals.has(p.userId)) {
+        this.reveals.set(p.userId, { userId: p.userId, cards: [...p.hole], desc: null, best: null })
+        added = true
+      }
+    }
+    if (added) this.addLog(`All-in — ${alive.map((p) => p.name).join(', ')} show their cards`)
   }
 
   private dealStreet(n: number, label: string) {
@@ -1060,7 +1083,6 @@ export class PokerTable {
 
   snapshotFor(userId: string | null): ClientTableView {
     const self = userId ? this.seatOf(userId) : null
-    const showdownPhase = this.phase === 'SHOWDOWN'
     const seats: ClientPlayerView[] = this.seats.map((p, i): ClientPlayerView => {
       if (!p)
         return {
@@ -1085,7 +1107,9 @@ export class PokerTable {
           isSelf: false,
         }
       const reveal = this.reveals.get(p.userId)
-      const showCards = showdownPhase && !!reveal
+      // reveals exist only at showdown or during an all-in runout (both public
+      // moments) — showdown() always overwrites runout entries with desc/best
+      const showCards = !!reveal
       return {
         seatIndex: i,
         userId: p.userId,

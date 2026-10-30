@@ -308,15 +308,16 @@
   animation: banner-up 0.3s ease-out both;
 }
 
-/* chip fly for the pot */
+/* chip fly for the pot — direction is per-flight via --fly-x/--fly-y (px),
+   computed from the seat anchor toward the felt center */
 @keyframes chip-to-pot {
   from {
-    opacity: 0.9;
+    opacity: 0.95;
     transform: translate(-50%, -50%) scale(1);
   }
   to {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.4) translateY(-18px);
+    transform: translate(calc(-50% + var(--fly-x, 0px)), calc(-50% + var(--fly-y, -18px))) scale(0.35);
   }
 }
 .chip-to-pot {

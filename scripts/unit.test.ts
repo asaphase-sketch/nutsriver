@@ -307,7 +307,7 @@ describe('card codec', () => {
 // ---------- hand trail + replayer state machine ----------
 
 import { PokerTable } from '../src/lib/poker-engine/engine'
-import type { HandSummary, HandTrailAction, TableConfig } from '../src/lib/poker-engine/types'
+import type { HandSummary, HandTrailAction, Phase, TableConfig } from '../src/lib/poker-engine/types'
 import { buildReplayStates, replayNets, type ReplayParticipant } from '../src/lib/poker/replay'
 import { tokenMatchesUser, type SessionPayload } from '../workers/auth'
 
@@ -410,6 +410,115 @@ describe('engine hand trail', () => {
     for (const w of wins) wonByName.set(w.who!, (wonByName.get(w.who!) ?? 0) + (w.amt ?? 0))
     for (const r of s.results) expect(wonByName.get(r.name)).toBe(r.amount)
     noHoleCardsInTrail(s)
+  })
+})
+
+// ---------- all-in runout: 'cards on their backs' (worldwide standard) ----------
+
+describe('all-in runout reveal', () => {
+  const RUN_CFG: TableConfig = {
+    key: 't:runout',
+    name: 'RunoutTest',
+    smallBlind: 10,
+    bigBlind: 20,
+    maxSeats: 2,
+    minBuyIn: 40,
+    maxBuyIn: 200,
+    botCount: 0,
+  }
+
+  interface Snap {
+    phase: Phase
+    boardLen: number
+    cards: (string | null)[][]
+    revealed: boolean[]
+  }
+
+  /** drive the table with an all-in-or-call policy, capturing every broadcast */
+  function makeHarness(cfg: TableConfig, policy: 'shove' | 'call') {
+    const snaps: Snap[] = []
+    const summaries: HandSummary[] = []
+    let table!: PokerTable
+    table = new PokerTable(
+      cfg,
+      {
+        onChange: () => {
+          const v = table.snapshotFor(null)
+          const seated = v.seats.filter((s) => s.status !== 'EMPTY')
+          snaps.push({
+            phase: v.phase,
+            boardLen: v.board.length,
+            cards: seated.map((s) => s.cards),
+            revealed: seated.map((s) => s.cardsRevealed),
+          })
+        },
+        onHandFinished: (s) => summaries.push(s),
+        onCashOut: () => {},
+      },
+      { actionMs: 20, showdownMs: 20, awardMs: 20, streetMs: 10, startMs: 10 },
+    )
+    const drive = async (deadlineMs: number) => {
+      const deadline = Date.now() + deadlineMs
+      while (summaries.length === 0 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 5))
+        const actor = table.snapshotFor(null).actorUserId
+        if (!actor) continue
+        const v = table.snapshotFor(actor)
+        const opts = v.selfOptions
+        if (!opts) continue
+        if (policy === 'shove' && opts.canRaise) {
+          const me = v.seats.find((s) => s.userId === actor)!
+          table.applyAction(actor, 'raise', me.stack + me.bet)
+        } else if (opts.canCheck) table.applyAction(actor, 'check')
+        else if (opts.canCall) table.applyAction(actor, 'call')
+      }
+      table.destroy()
+    }
+    return { table, snaps, summaries, drive }
+  }
+
+  test('runout: both hands flip face-up with the flop and stay public to showdown', async () => {
+    const h = makeHarness(RUN_CFG, 'shove')
+    h.table.sitDown('r:0', 'Runner0', 0, 60)
+    h.table.sitDown('r:1', 'Runner1', 1, 60)
+    await h.drive(10_000)
+    expect(h.summaries.length).toBe(1)
+    // during preflop betting nothing is public
+    for (const s of h.snaps.filter((x) => x.phase === 'PREFLOP')) {
+      expect(s.revealed.every((r) => r === false)).toBe(true)
+    }
+    // the FIRST flop snapshot already carries both hands face-up (reveal
+    // happens before the runout board is dealt — PokerStars/GGPoker style)
+    const flopSnaps = h.snaps.filter((x) => x.boardLen === 3)
+    expect(flopSnaps.length).toBeGreaterThanOrEqual(1)
+    for (const s of flopSnaps) {
+      expect(s.revealed).toEqual([true, true])
+      for (const hand of s.cards) {
+        expect(hand.length).toBe(2)
+        for (const c of hand) expect(c).toMatch(/^[2-9TJQKA][shdc]$/)
+      }
+    }
+    // and they stay public through turn, river and showdown
+    for (const s of h.snaps.filter((x) => x.boardLen >= 3)) {
+      expect(s.revealed).toEqual([true, true])
+    }
+    // the hand log records the reveal moment
+    expect(h.summaries[0]!.log.some((l) => l.includes('show their cards'))).toBe(true)
+  })
+
+  test('normal betting hand: opponents stay hidden until SHOWDOWN', async () => {
+    const h = makeHarness(TRAIL_CFG, 'call')
+    h.table.sitDown('c:0', 'Caller0', 0, 1000)
+    h.table.sitDown('c:1', 'Caller1', 1, 1000)
+    h.table.sitDown('c:2', 'Caller2', 2, 1000)
+    await h.drive(10_000)
+    expect(h.summaries.length).toBe(1)
+    const midStreet = h.snaps.filter((x) => x.phase === 'FLOP' || x.phase === 'TURN' || x.phase === 'RIVER')
+    expect(midStreet.length).toBeGreaterThanOrEqual(1)
+    for (const s of midStreet) expect(s.revealed.every((r) => r === false)).toBe(true)
+    const sd = h.snaps.filter((x) => x.phase === 'SHOWDOWN')
+    expect(sd.length).toBeGreaterThanOrEqual(1)
+    for (const s of sd) expect(s.revealed.every((r) => r === true)).toBe(true)
   })
 })
 
