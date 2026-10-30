@@ -13,6 +13,8 @@ export interface Env {
   LOBBY: DurableObjectNamespace
   ASSETS: Fetcher
   AUTH_SECRET: string
+  /** TEMP one-time admin bootstrap key — removed right after use */
+  BOOTSTRAP_KEY?: string
   /** set to "1" in dev/CI to shorten game timings for fast E2E */
   E2E_FAST?: string
 }

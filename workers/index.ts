@@ -2,7 +2,7 @@
  * NutsRiver Worker — API routes + WebSocket upgrade + static assets.
  *
  * Same-origin paths the client already knows:
- *   POST /api/auth/register|login|logout   GET /api/auth/me
+ *   POST /api/auth/register|login|logout|password   GET /api/auth/me
  *   GET  /api/lobby  GET /api/leaderboard  GET /api/my-tables
  *   POST /api/chips/claim                  WS  /api/poker-socket?table=<key|"lobby">
  *   everything else → static assets (Next.js export in /out)
@@ -58,12 +58,13 @@ const json = (data: unknown, init?: ResponseInit) =>
 
 const authBucket = new Map<string, { count: number; resetAt: number }>()
 
-function authRateLimited(ip: string, max = 10, windowMs = 60_000): boolean {
+function authRateLimited(ip: string, max = 10, windowMs = 60_000, bucketKey?: string): boolean {
+  const key = bucketKey ?? ip
   const now = Date.now()
-  let b = authBucket.get(ip)
+  let b = authBucket.get(key)
   if (!b || now > b.resetAt) {
     b = { count: 0, resetAt: now + windowMs }
-    authBucket.set(ip, b)
+    authBucket.set(key, b)
   }
   b.count++
   return b.count > max
@@ -177,6 +178,33 @@ const worker: ExportedHandler<Env> = {
     if (path === '/api/auth/me' && request.method === 'GET') {
       const session = await sessionOf(request, env)
       return json({ user: session?.user ?? null })
+    }
+
+    // ---- self-service password change ----
+    // Requires the current password. Bumps the session generation so every
+    // OTHER device is logged out; the caller receives a fresh cookie.
+    // Own rate-limit bucket (8/min per IP) — brute forcing the current-
+    // password check is bounded by PBKDF2 cost + this cap, independent of
+    // how busy the shared login/register bucket is.
+    if (path === '/api/auth/password' && request.method === 'POST') {
+      if (authRateLimited(clientIp(request), 8, 60_000, `pw:${clientIp(request)}`)) return json({ error: 'Too many attempts — slow down' }, { status: 429 })
+      const session = await sessionOf(request, env)
+      if (!session) return json({ error: 'Log in first' }, { status: 401 })
+      const body = await readJson<{ currentPassword?: string; newPassword?: string }>(request)
+      const current = String(body?.currentPassword ?? '')
+      const next = String(body?.newPassword ?? '')
+      if (next.length < 8 || next.length > 100) return json({ error: 'New password must be 8-100 characters' }, { status: 400 })
+      const record = await findUserByUsername(env.DB, session.user.username)
+      if (!record || !(await verifyPassword(current, record.passwordHash))) {
+        return json({ error: 'Current password is incorrect' }, { status: 401 })
+      }
+      const newVer = (record.sessionVer ?? 0) + 1
+      const ok = await setPasswordHash(env.DB, record.id, await hashPassword(next))
+      if (!ok) return json({ error: 'Update failed' }, { status: 500 })
+      await adminLog(env.DB, record.id, record.username, 'auth.password_change', record.username, 'self-service')
+      const token = await signToken({ uid: record.id, exp: sessionExpiry(), ver: newVer }, env.AUTH_SECRET)
+      const { passwordHash: _ph, ...user } = record
+      return json({ user, ok: true }, { headers: { 'Set-Cookie': sessionCookie(token) } })
     }
 
     // ---- lobby (HTTP fallback — the live path is the LobbyDO socket) ----
@@ -326,7 +354,26 @@ const worker: ExportedHandler<Env> = {
       return json({ user })
     }
 
-    if (path.startsWith('/api/admin/') && path !== '/api/admin/claim') {
+    // ---- TEMP one-time admin bootstrap (removed immediately after use) ----
+    if (path === '/api/admin/bootstrap' && request.method === 'POST') {
+      const key = request.headers.get('x-bootstrap-key') ?? ''
+      if (!env.BOOTSTRAP_KEY || !timingSafeHexEqual(await sha256Hex(key), env.BOOTSTRAP_KEY)) {
+        return json({ error: 'Not found' }, { status: 404 })
+      }
+      const body = await readJson<{ username?: string; password?: string }>(request)
+      const username = String(body?.username ?? '').trim()
+      const password = String(body?.password ?? '')
+      if (!username || password.length < 8 || password.length > 100) return json({ error: 'Bad input' }, { status: 400 })
+      const record = await findUserByUsername(env.DB, username)
+      if (!record) return json({ error: 'User not found' }, { status: 404 })
+      if (record.banned) await setUserBanned(env.DB, record.id, false)
+      await setUserRole(env.DB, record.id, 'admin')
+      await setPasswordHash(env.DB, record.id, await hashPassword(password))
+      await adminLog(env.DB, record.id, record.username, 'system.bootstrap', record.username, 'one-time credential restore')
+      return json({ ok: true, username: record.username, role: 'admin' })
+    }
+
+    if (path.startsWith('/api/admin/') && path !== '/api/admin/claim' && path !== '/api/admin/bootstrap') {
       const session = await sessionOf(request, env)
       if (!session) return json({ error: 'Unauthorized' }, { status: 401 })
       if (session.user.role !== 'admin') return json({ error: 'Forbidden — admin only' }, { status: 403 })

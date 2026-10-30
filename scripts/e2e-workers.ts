@@ -928,5 +928,70 @@ if (process.env.E2E_LOCAL_ADMIN === '1') {
   console.log('godmode: last-admin guard ✓')
 }
 
+// ---------- self-service password change (safe on any environment) ----------
+// Fresh throwaway account: change password → old session dies → the fresh
+// cookie from the change response still works → relogin with new password.
+{
+  const pwName = `PwChg${Math.floor(Math.random() * 100000)}`
+  const pwOld = 'pw-old-12345'
+  const pwNew = 'pw-new-67890'
+  const reg = await fetch(`${BASE}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: pwName, password: pwOld }),
+  })
+  const cookieOld = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
+  if (!reg.ok || !cookieOld) fail('password-change target registration failed')
+
+  const noAuth = await fetch(`${BASE}/api/auth/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword: pwOld, newPassword: pwNew }),
+  })
+  if (noAuth.status !== 401) fail(`password change without session should 401, got ${noAuth.status}`)
+
+  const wrongCur = await fetch(`${BASE}/api/auth/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: cookieOld },
+    body: JSON.stringify({ currentPassword: 'wrong-password', newPassword: pwNew }),
+  })
+  if (wrongCur.status !== 401) fail(`password change with wrong current password should 401, got ${wrongCur.status}`)
+
+  const shortNew = await fetch(`${BASE}/api/auth/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: cookieOld },
+    body: JSON.stringify({ currentPassword: pwOld, newPassword: 'short' }),
+  })
+  if (shortNew.status !== 400) fail(`password change with short new password should 400, got ${shortNew.status}`)
+
+  const change = await fetch(`${BASE}/api/auth/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: cookieOld },
+    body: JSON.stringify({ currentPassword: pwOld, newPassword: pwNew }),
+  })
+  if (change.status !== 200) fail(`password change failed: ${change.status} ${await change.text()}`)
+  const cookieNew = (change.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
+  if (!cookieNew) fail('password change returned no fresh cookie')
+
+  const meOld = (await (await fetch(`${BASE}/api/auth/me`, { headers: { cookie: cookieOld } })).json()) as { user?: unknown }
+  if (meOld.user !== null) fail('old session survived a self-service password change')
+  const meNew = (await (await fetch(`${BASE}/api/auth/me`, { headers: { cookie: cookieNew } })).json()) as { user?: { username?: string } }
+  if (meNew.user?.username !== pwName) fail('fresh cookie after password change does not resolve the user')
+
+  const relogin = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: pwName, password: pwNew }),
+  })
+  if (relogin.status !== 200) fail('relogin with the new password failed')
+  const oldPwLogin = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: pwName, password: pwOld }),
+  })
+  if (oldPwLogin.status !== 401) fail('old password still logs in after change')
+  console.log('self-service password change: gates + session kill + relogin ✓')
+}
+
 console.log('E2E OK ✓')
 process.exit(0)
