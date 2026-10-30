@@ -18,12 +18,7 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
-  "build": {
-    // TEMP one-shot CF cleanup + free-plugin probe — runs inside the Deploy
-    // job where CLOUDFLARE_API_TOKEN exists; removed in the next commit.
-    "command": "node scripts/cf-clean-once.mjs"
-  },
-  "d1_databases": [
+"d1_databases": [
     {
       "binding": "DB",
       "database_name": "royal-felt",
