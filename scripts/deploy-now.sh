@@ -21,8 +21,9 @@ verdict() { # label, expected, actual
   if [[ "$2" == *"$3"* || "$3" == "$2" ]]; then echo "  ✓ $1"; else echo "  ✗ $1 (got: $3)"; exit 1; fi
 }
 HOME_HTML=$(curl -s "$BASE/")
-verdict "homepage serves NutsRiver" "$HOME_HTML" "NutsRiver"
-if [[ "$HOME_HTML" == *"Royal Felt"* ]]; then echo "  ✗ homepage still shows old brand"; exit 1; else echo "  ✓ old brand fully gone from homepage"; fi
+# brand renders lowercase in the UI — match case-insensitively
+if rg -qi 'nutsriver' <<< "$HOME_HTML"; then echo "  ✓ homepage serves nutsriver"; else echo "  ✗ homepage does not mention nutsriver"; exit 1; fi
+if rg -qi 'royal felt' <<< "$HOME_HTML"; then echo "  ✗ homepage still shows old brand"; exit 1; else echo "  ✓ old brand fully gone from homepage"; fi
 CODE_ADMIN=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/admin")
 [[ "$CODE_ADMIN" == 200 ]] && echo "  ✓ /admin serves (HTTP $CODE_ADMIN)" || { echo "  ✗ /admin HTTP $CODE_ADMIN"; exit 1; }
 CODE_LOBBY=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/lobby")
