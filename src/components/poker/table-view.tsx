@@ -29,7 +29,7 @@ interface TableViewProps {
 const isTournamentTable = (key: string) => key.startsWith('t:')
 
 /** ms between dealt cards around the table (matches Seat's DEAL_STEP_MS) */
-const DEAL_STEP_MS = 150
+const DEAL_STEP_MS = 230
 
 type Perspective = 'me' | number
 
@@ -234,7 +234,7 @@ export function TableView({ poker, view }: TableViewProps) {
     const ids = new Set(spawned.map((f) => f.id))
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot transition animation: spawns only when a street sweep zeroes a bet; flights state is NOT in the deps, so no render loop is possible
     setFlights((f) => [...f, ...spawned])
-    const t = setTimeout(() => setFlights((f) => f.filter((x) => !ids.has(x.id))), 550)
+    const t = setTimeout(() => setFlights((f) => f.filter((x) => !ids.has(x.id))), 950)
     return () => clearTimeout(t)
   }, [view.seats, view.phase, view.maxSeats, rotation])
 
@@ -251,7 +251,9 @@ export function TableView({ poker, view }: TableViewProps) {
         </button>
         <span className="flex items-center gap-1.5 rounded-full border border-orange-300/30 bg-gradient-to-b from-orange-500/15 to-transparent px-3 py-1.5">
           <Diamond className="h-3.5 w-3.5 fill-orange-400 text-orange-400" aria-hidden />
-          <span className="text-xs font-black lowercase tracking-wide text-white">nutsriver</span>
+          <span className="font-serif bg-gradient-to-b from-amber-100 via-amber-200 to-orange-400 bg-clip-text text-sm font-black lowercase tracking-wide text-transparent drop-shadow-[0_1px_8px_rgba(255,140,60,0.35)]">
+            nutsriver
+          </span>
         </span>
         <h1 className="hidden text-sm font-bold text-white sm:block">{view.name}</h1>
         <span className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-bold text-orange-200 ring-1 ring-orange-300/25">
@@ -351,6 +353,8 @@ export function TableView({ poker, view }: TableViewProps) {
             className="rail-2 felt-short relative aspect-[4/4.6] w-full select-none sm:aspect-[16/10.5]"
           >
           <div className="felt felt-2 felt-watermark absolute inset-0 overflow-hidden rounded-[1.5rem] shadow-2xl shadow-black/60">
+            {/* ambient room light drifting over the cloth (pure decoration) */}
+            <span aria-hidden className="felt-sheen motion-reduce:hidden" />
             {/* tournament strip */}
             {tournament && (
               <div className="absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-300/40 bg-black/55 px-3 py-1 text-[10px] font-semibold text-amber-200 shadow-lg backdrop-blur-sm sm:text-xs">

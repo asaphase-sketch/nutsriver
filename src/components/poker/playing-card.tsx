@@ -71,7 +71,7 @@ export function PlayingCard({ code, faceDown, size = 'md', className, animate, f
         aria-hidden
         style={delayStyle}
         className={cn(
-          'card-back select-none border border-rose-950/70 shadow-md shadow-black/40',
+          'card-back select-none border border-rose-950/70 shadow-lg shadow-black/30',
           sizeCls,
           animate && 'card-deal',
           flip && 'card-flip',
@@ -121,7 +121,7 @@ export function PlayingCard({ code, faceDown, size = 'md', className, animate, f
     <div
       style={delayStyle}
       className={cn(
-        'relative flex select-none flex-col justify-between bg-gradient-to-b from-white to-slate-100 p-1 font-semibold leading-none text-slate-900 shadow-md shadow-black/40 ring-1 ring-black/10',
+        'relative flex select-none flex-col justify-between bg-gradient-to-b from-white to-slate-100 p-1 font-semibold leading-none text-slate-900 shadow-lg shadow-black/30 ring-1 ring-black/10',
         sizeCls,
         animate && 'card-deal',
         flip && 'card-flip',

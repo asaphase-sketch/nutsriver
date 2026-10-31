@@ -170,34 +170,39 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-/* glowing orange CTA (raise) */
+/* glowing orange CTA (raise) — warmer, gentler halo */
 .neon-cta {
   background: linear-gradient(180deg, #ffb15c 0%, #ff7a2f 55%, #f25c1a 100%);
   box-shadow:
-    0 0 22px rgba(255, 130, 50, 0.45),
-    0 6px 16px rgba(0, 0, 0, 0.5),
+    0 0 26px rgba(255, 130, 50, 0.3),
+    0 8px 18px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: box-shadow 0.6s ease;
 }
 .neon-cta:hover:not(:disabled) {
   box-shadow:
-    0 0 34px rgba(255, 140, 55, 0.6),
-    0 6px 16px rgba(0, 0, 0, 0.5),
+    0 0 38px rgba(255, 140, 55, 0.45),
+    0 8px 18px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
-/* deal-in animation */
+/* deal-in animation — soft, slow 2.5D: cards glide in on a gentle arc with a
+   slight rotation (like a dealer sliding a card), long ease-out settle */
 @keyframes card-deal-in {
   from {
     opacity: 0;
-    transform: translateY(-14px) scale(0.85);
+    transform: translateY(-24px) translateX(7px) rotate(-7deg) scale(0.8);
+  }
+  55% {
+    opacity: 1;
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0) translateX(0) rotate(0deg) scale(1);
   }
 }
 .card-deal {
-  animation: card-deal-in 0.28s cubic-bezier(0.2, 0.7, 0.3, 1.1) both;
+  animation: card-deal-in 0.62s cubic-bezier(0.16, 0.55, 0.26, 1) both;
 }
 
 /* serif display for brand / headings */
@@ -224,36 +229,37 @@
 
 /* ==================== NutsRiver graphics 2.5 ==================== */
 
-/* card flip (showdown reveal / board runout) */
+/* card flip (showdown reveal / board runout) — slow 3D turn with a soft
+   perspective so the card reads as physically rotating on the felt */
 @keyframes card-flip-in {
   0% {
-    opacity: 0.4;
-    transform: rotateY(90deg) scale(0.92);
+    opacity: 0.35;
+    transform: perspective(640px) rotateY(86deg) scale(0.9);
   }
-  60% {
-    transform: rotateY(-8deg) scale(1.04);
+  55% {
+    transform: perspective(640px) rotateY(-9deg) scale(1.03);
   }
   100% {
     opacity: 1;
-    transform: rotateY(0deg) scale(1);
+    transform: perspective(640px) rotateY(0deg) scale(1);
   }
 }
 .card-flip {
-  animation: card-flip-in 0.34s cubic-bezier(0.3, 0.7, 0.3, 1) both;
+  animation: card-flip-in 0.78s cubic-bezier(0.24, 0.58, 0.3, 1) both;
   backface-visibility: hidden;
 }
 
-/* winner highlight pulse */
+/* winner highlight pulse — slow, warm breathing instead of a strobe */
 @keyframes card-win-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.55), 0 4px 10px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.32), 0 6px 14px rgba(0, 0, 0, 0.3);
   }
   50% {
-    box-shadow: 0 0 14px 3px rgba(251, 191, 36, 0.65), 0 4px 10px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 18px 4px rgba(251, 191, 36, 0.48), 0 6px 14px rgba(0, 0, 0, 0.3);
   }
 }
 .card-win {
-  animation: card-win-pulse 1.1s ease-in-out infinite;
+  animation: card-win-pulse 2.4s ease-in-out infinite;
 }
 
 /* premium felt: radial lighting, diamond weave, vignette + rail shadow */
@@ -261,7 +267,7 @@
   background-color: #8e201c;
   background-image:
     var(--felt-mark),
-    radial-gradient(ellipse 62% 55% at 50% 42%, rgba(255, 158, 118, 0.16), transparent 62%),
+    radial-gradient(ellipse 68% 58% at 50% 40%, rgba(255, 158, 118, 0.12), transparent 64%),
     radial-gradient(ellipse 120% 100% at 50% 118%, rgba(0, 0, 0, 0.4), transparent 58%),
     repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.04) 0 3px, transparent 3px 7px),
     repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.045) 0 3px, transparent 3px 7px),
@@ -285,24 +291,84 @@
   inset: 0;
   border-radius: inherit;
   box-shadow:
-    inset 0 0 44px rgba(0, 0, 0, 0.55),
-    inset 0 2px 8px rgba(255, 255, 255, 0.12);
+    inset 0 0 70px rgba(0, 0, 0, 0.5),
+    inset 0 14px 34px rgba(0, 0, 0, 0.28),
+    inset 0 2px 8px rgba(255, 255, 255, 0.1);
   pointer-events: none;
 }
 
-/* obsidian rail with neon-orange rim light */
+/* slow ambient sheen sweeping across the felt — reads as overhead room light
+   drifting over the cloth; pure decoration, near-invisible opacity */
+@keyframes felt-sheen {
+  0% {
+    transform: translateX(-130%) skewX(-12deg);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.55;
+  }
+  52% {
+    opacity: 0.4;
+  }
+  70% {
+    transform: translateX(470%) skewX(-12deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(470%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+.felt-sheen {
+  position: absolute;
+  top: -18%;
+  bottom: -18%;
+  left: 0;
+  width: 30%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 186, 128, 0.05) 42%,
+    rgba(255, 222, 182, 0.085) 50%,
+    rgba(255, 186, 128, 0.05) 58%,
+    transparent
+  );
+  filter: blur(12px);
+  pointer-events: none;
+  animation: felt-sheen 17s ease-in-out infinite;
+}
+
+/* obsidian rail with neon-orange rim light — softer halo, 3D bevel (light on
+   top edge, shade on bottom) and a very slow breathing glow so the table
+   feels alive without strobing */
+@keyframes rail-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 22px rgba(255, 130, 55, 0.26),
+      0 0 72px rgba(255, 110, 40, 0.13),
+      0 24px 64px rgba(0, 0, 0, 0.6),
+      0 4px 12px rgba(0, 0, 0, 0.45),
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.22),
+      inset 0 -2px 3px rgba(0, 0, 0, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 34px rgba(255, 140, 60, 0.4),
+      0 0 100px rgba(255, 115, 45, 0.2),
+      0 24px 64px rgba(0, 0, 0, 0.6),
+      0 4px 12px rgba(0, 0, 0, 0.45),
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.22),
+      inset 0 -2px 3px rgba(0, 0, 0, 0.55);
+  }
+}
 .rail-2 {
   border: 10px solid transparent;
   border-radius: 2.2rem;
   background:
     linear-gradient(#1a0d0a, #1a0d0a) padding-box,
     linear-gradient(160deg, #ffb977 0%, #ff8a3d 26%, #ffd2a0 50%, #f06a22 74%, #ffa254 100%) border-box;
-  box-shadow:
-    0 0 34px rgba(255, 130, 55, 0.5),
-    0 0 96px rgba(255, 110, 40, 0.24),
-    0 22px 60px rgba(0, 0, 0, 0.65),
-    0 4px 12px rgba(0, 0, 0, 0.5),
-    inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  animation: rail-breathe 7.5s ease-in-out infinite;
 }
 
 /* the watermark rides INSIDE the felt layer stack (see --felt-mark above) —
@@ -311,27 +377,27 @@
   opacity: 0.9;
 }
 
-/* chip stack for bets */
+/* chip stack for bets — softer drop shadow reads as height above the felt */
 .chip-stack {
   background: radial-gradient(circle at 50% 42%, #fbbf24 0 38%, #b45309 42% 46%, #f59e0b 50% 58%, #92400e 62%);
   box-shadow:
-    0 -2px 0 rgba(255, 255, 255, 0.35) inset,
-    0 3px 5px rgba(0, 0, 0, 0.5),
-    0 -5px 0 #b45309, 0 -5px 0 1px rgba(255, 255, 255, 0.2),
-    0 -8px 0 #f59e0b, 0 -8px 0 1px rgba(255, 255, 255, 0.16);
+    0 -2px 0 rgba(255, 255, 255, 0.32) inset,
+    0 5px 9px rgba(0, 0, 0, 0.38),
+    0 -5px 0 #b45309, 0 -5px 0 1px rgba(255, 255, 255, 0.18),
+    0 -8px 0 #f59e0b, 0 -8px 0 1px rgba(255, 255, 255, 0.14);
 }
 
-/* actor seat glow */
+/* actor seat glow — a slow candle-like breath instead of a blink */
 @keyframes actor-glow {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.0), 0 10px 24px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.0), 0 12px 26px rgba(0, 0, 0, 0.38);
   }
   50% {
-    box-shadow: 0 0 18px 2px rgba(251, 191, 36, 0.4), 0 10px 24px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 0 20px 3px rgba(251, 191, 36, 0.34), 0 12px 26px rgba(0, 0, 0, 0.38);
   }
 }
 .actor-glow {
-  animation: actor-glow 1.6s ease-in-out infinite;
+  animation: actor-glow 3.1s ease-in-out infinite;
 }
 
 /* winner banner slide */
@@ -346,23 +412,27 @@
   }
 }
 .banner-up {
-  animation: banner-up 0.3s ease-out both;
+  animation: banner-up 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
-/* chip fly for the pot — direction is per-flight via --fly-x/--fly-y (px),
-   computed from the seat anchor toward the felt center */
+/* chips first lift off the felt, then glide to the pot and shrink into it —
+   direction is per-flight via --fly-x/--fly-y (px), seat anchor → felt center */
 @keyframes chip-to-pot {
-  from {
-    opacity: 0.95;
+  0% {
+    opacity: 0.9;
     transform: translate(-50%, -50%) scale(1);
   }
-  to {
+  16% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--fly-x, 0px) * 0.1), calc(-50% + var(--fly-y, -18px) * 0.08 - 11px)) scale(1.14);
+  }
+  100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--fly-x, 0px)), calc(-50% + var(--fly-y, -18px))) scale(0.35);
+    transform: translate(calc(-50% + var(--fly-x, 0px)), calc(-50% + var(--fly-y, -18px))) scale(0.38);
   }
 }
 .chip-to-pot {
-  animation: chip-to-pot 0.5s ease-in both;
+  animation: chip-to-pot 0.9s cubic-bezier(0.32, 0.4, 0.4, 1) both;
 }
 
 /* ---------- mobile-first ergonomics ---------- */
@@ -390,31 +460,37 @@ button,
   .actor-glow,
   .timer-urgent,
   .banner-up,
-  .chip-to-pot {
+  .chip-to-pot,
+  .rail-2,
+  .felt-sheen,
+  .chip {
     animation: none !important;
+  }
+  .felt-sheen {
+    display: none !important;
   }
 }
 
 /* ---------- action clock ---------- */
 @keyframes timer-urgent-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.45);
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.38);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(244, 63, 94, 0);
+    box-shadow: 0 0 0 7px rgba(244, 63, 94, 0);
   }
 }
 .timer-urgent {
-  animation: timer-urgent-pulse 0.9s ease-in-out infinite;
+  animation: timer-urgent-pulse 1.5s ease-in-out infinite;
 }
 
-/* 3D dealer button puck (white acrylic with bevel + drop shadow) */
+/* 3D dealer button puck (white acrylic with bevel + soft drop shadow) */
 .dealer-puck {
   background: radial-gradient(circle at 35% 28%, #ffffff 0 45%, #d6d3d1 80%, #a8a29e 100%);
   box-shadow:
     inset 0 -1.5px 2px rgba(0, 0, 0, 0.35),
     inset 0 1px 1px rgba(255, 255, 255, 0.9),
-    0 1px 3px rgba(0, 0, 0, 0.6);
+    0 2px 4px rgba(0, 0, 0, 0.42);
 }
 
 /* mini 3D bet chip used inside bet pills */
@@ -431,13 +507,23 @@ button,
 }
 
 /* ---------- pot chip stack (center of the felt) ---------- */
+@keyframes chip-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
 .chip {
   position: absolute;
   border-radius: 9999px;
   border: 1.5px dashed rgba(255, 255, 255, 0.75);
   box-shadow:
     inset 0 0 0 2px rgba(0, 0, 0, 0.25),
-    0 1px 2px rgba(0, 0, 0, 0.55);
+    0 2px 3px rgba(0, 0, 0, 0.45);
+  animation: chip-float 4.8s ease-in-out infinite;
 }
 .chip-1 {
   left: 4px;

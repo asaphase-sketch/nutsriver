@@ -34,7 +34,7 @@ const ACTION_LABEL: Record<string, string> = {
 }
 
 /** ms between each dealt card around the table */
-const DEAL_STEP_MS = 150
+const DEAL_STEP_MS = 230
 
 export function Seat({
   player,
@@ -132,8 +132,9 @@ export function Seat({
       {/* name plate */}
       <div
         className={cn(
-          'relative w-full overflow-hidden rounded-lg border bg-[#190e0b]/95 px-2 py-1.5 shadow-lg shadow-black/50 backdrop-blur-sm',
-          isActor ? 'border-orange-300/90 shadow-orange-500/25' : 'border-white/10',
+          'relative w-full overflow-hidden rounded-lg border bg-[#190e0b]/95 px-2 py-1.5 shadow-xl shadow-black/35 backdrop-blur-sm',
+          'transition-[border-color,box-shadow,background-color] duration-700 ease-out',
+          isActor ? 'border-orange-300/90 shadow-orange-500/20' : 'border-white/10',
           isSelf && 'ring-1 ring-orange-300/70',
           won && 'border-emerald-300 bg-emerald-950/90',
           isActor && !urgent && 'actor-glow',
