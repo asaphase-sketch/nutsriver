@@ -194,6 +194,8 @@ export class TournamentDO {
         maxBuyIn: this.cfg?.startingStack ?? 1500,
         botCount: 0,
         gameType: this.cfg?.gameType ?? 'holdem',
+        // Omaha tournaments run pot-limit, matching the cash-game rule set
+        limit: (this.cfg?.gameType ?? 'holdem') === 'holdem' ? 'nl' : 'pl',
         tournament: true,
       },
       {
@@ -661,6 +663,8 @@ export class TournamentDO {
         activeOpponents: s2.seats.filter(
           (x) => x.userId && x.userId !== actorId && (x.status === 'IN_HAND' || x.status === 'ALL_IN'),
         ).length,
+        bigBlind: Math.max(1, s2.bigBlind),
+        isButton: actorView.isDealer,
       }
       const decision = botDecide(ctx)
       if ((decision.type === 'bet' || decision.type === 'raise') && !opts.canRaise) {

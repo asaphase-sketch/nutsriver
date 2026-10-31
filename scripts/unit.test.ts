@@ -308,6 +308,8 @@ describe('card codec', () => {
 
 import { PokerTable } from '../src/lib/poker-engine/engine'
 import type { HandSummary, HandTrailAction, Phase, TableConfig } from '../src/lib/poker-engine/types'
+import type { BotContext } from '../src/lib/poker-engine/types'
+import { botDecide, flushOuts } from '../src/lib/poker-engine/bots'
 import { buildReplayStates, replayNets, type ReplayParticipant } from '../src/lib/poker/replay'
 import { tokenMatchesUser, type SessionPayload } from '../workers/auth'
 
@@ -988,5 +990,196 @@ describe('session generation (godmode force-logout)', () => {
     // force-logout bumped the row → every outstanding token is dead
     expect(tokenMatchesUser(modern, 4)).toBe(false)
     expect(tokenMatchesUser(legacy, 1)).toBe(false)
+  })
+})
+
+// ---------- pot-limit (PLO) betting caps — standard "call then raise the pot" ----------
+// Cap = currentBet + streetPot + toCall (streetPot = collected pot + all
+// current-street bets); an opening bet is capped at the street pot. A 1/2
+// PLO opener maxes at 70 (3.5 BB) — the classic PLO number.
+
+describe('pot-limit betting caps', () => {
+  test('preflop: opener capped at 3.5 BB, raiser capped at pot-after-call, overbets clamped', async () => {
+    const { table, summaries, pinButton, startHand, play } = rulesTable(
+      [2000, 2000, 2000],
+      { gameType: 'omaha4', limit: 'pl' },
+    )
+    pinButton(0) // button 0, SB 1 (10 in), BB 2 (20 in) → streetPot 30
+    startHand()
+    await play([
+      {
+        // button opens: cap = currentBet 20 + streetPot 30 + toCall 20 = 70
+        assert: (o) => {
+          expect(o.maxBetTo).toBe(70)
+          expect(o.minBetTo).toBe(40)
+        },
+      },
+      { seat: 0, type: 'raise', amount: 70 },
+      {
+        // SB: streetPot 100, cap = 70 + 100 + 60 = 230 — a 5000 overbet is
+        // clamped to the pot cap, exactly like a live dealer would
+        assert: (o) => expect(o.maxBetTo).toBe(230),
+      },
+      { seat: 1, type: 'raise', amount: 5000 },
+      {
+        // BB: after SB's raise-to-230 (her 10 → 230), streetPot = 320 and
+        // toCall = 210 → cap = 230 + 320 + 210 = 760
+        assert: (o, t) => {
+          expect(o.maxBetTo).toBe(760)
+          expect(t.snapshotFor(null).currentBet).toBe(230) // the 5000 overbet was clamped
+        },
+      },
+      { seat: 2, type: 'fold' },
+      { seat: 0, type: 'fold' },
+    ])
+    table.destroy()
+    expect(summaries.length).toBe(1)
+    const s = summaries[0]
+    // SB's pot-capped raise to 230 was never called: the 160 above P0's 70 is
+    // refunded, so 70+70+20 = 160 stays in the pot — conservation holds
+    expect(s.potTotal).toBe(160)
+    const refund = s.trail.find((a) => a.act === 'refund')
+    expect(refund?.amt).toBe(160)
+    expect(refund?.who).toBe('P1')
+    const committed = s.participants.reduce((a, p) => a + p.committed, 0)
+    expect(committed).toBe(160)
+    const trailWins = s.trail.filter((a) => a.act === 'win').reduce((a, x) => a + (x.amt ?? 0), 0)
+    expect(trailWins).toBe(160)
+  })
+
+  test('postflop: opening bet capped at the street pot, raises follow the pot chain', async () => {
+    const { table, summaries, pinButton, startHand, play } = rulesTable(
+      [2000, 2000, 2000],
+      { gameType: 'omaha4', limit: 'pl' },
+    )
+    pinButton(0) // button 0, SB 1, BB 2 → postflop order 1, 2, 0
+    startHand()
+    await play([
+      { seat: 0, type: 'call' }, // call 20
+      { seat: 1, type: 'call' }, // call 10 → streetPot 60
+      { seat: 2, type: 'check' },
+      {
+        // flop: no bet yet → cap is the street pot itself (60)
+        assert: (o) => expect(o.maxBetTo).toBe(60),
+      },
+      { seat: 1, type: 'bet', amount: 60 },
+      {
+        // streetPot 120, toCall 60 → cap = 60 + 120 + 60 = 240
+        assert: (o) => expect(o.maxBetTo).toBe(240),
+      },
+      { seat: 2, type: 'raise', amount: 240 },
+      {
+        // seat0 has no flop bet in yet: streetPot 360, toCall 240 →
+        // cap = 240 + 360 + 240 = 840
+        assert: (o) => expect(o.maxBetTo).toBe(840),
+      },
+      { seat: 0, type: 'fold' },
+      { seat: 1, type: 'fold' },
+    ])
+    table.destroy()
+    const s = summaries[0]
+    // seat2's pot-chain raise to 240 was never called above seat1's 60:
+    // 180 refunded → 60+60+60 = 180 stays in the pot
+    expect(s.potTotal).toBe(180)
+    const refund = s.trail.find((a) => a.act === 'refund')
+    expect(refund?.amt).toBe(180)
+    expect(refund?.who).toBe('P2')
+    const committed = s.participants.reduce((a, p) => a + p.committed, 0)
+    expect(committed).toBe(180)
+  })
+
+  test('no-limit tables keep the stack as the only ceiling', async () => {
+    const { table, pinButton, startHand, play } = rulesTable([2000, 2000, 2000])
+    pinButton(0)
+    startHand()
+    await play([
+      {
+        assert: (o) => {
+          // button has 20 in (no blind) → all-in to 2000
+          expect(o.maxBetTo).toBe(2000)
+        },
+      },
+      { seat: 0, type: 'raise', amount: 5000 }, // NL: clamp is the stack
+      {
+        assert: (o, t) => {
+          expect(o.maxBetTo).toBe(2000)
+          expect(t.snapshotFor(null).currentBet).toBe(2000)
+        },
+      },
+      { seat: 1, type: 'fold' },
+      { seat: 2, type: 'fold' },
+    ])
+    table.destroy()
+  })
+})
+
+// ---------- bot decision sanity: legal actions, sane sizes, PLO draw rules ----------
+
+describe('bot AI sanity', () => {
+  const mkCtx = (over: Partial<BotContext> = {}): BotContext => ({
+    self: {
+      userId: 'bot:1', name: 'Bot', isBot: true, seatIndex: 0, stack: 5000, bet: 0,
+      committed: 0, inHand: true, folded: false, allIn: false, hasActed: false,
+      lastAction: null, sittingOut: false, wantsLeave: false,
+      hole: [], connected: true, disconnectedAt: null,
+    },
+    hole: [48, 44, 42, 39], // As Ks Qd Jc — premium double-suited PLO rundown
+    board: [],
+    phase: 'PREFLOP',
+    gameType: 'omaha4',
+    currentBet: 2,
+    minRaiseTo: 4,
+    maxBetTo: 5000,
+    potTotal: 3,
+    callAmount: 2,
+    canCheck: false,
+    canRaise: true,
+    activeOpponents: 3,
+    bigBlind: 2,
+    isButton: false,
+    ...over,
+  })
+
+  test('decisions are always legal and sized inside [minRaiseTo, maxBetTo]', () => {
+    const boards = [
+      [],
+      [4, 17, 30], // 3s 6h 9d
+      [12, 25, 38, 0], // 5s 8h Jd 2s — 4-card board
+      [1, 14, 27, 40, 5], // 2h 5d 8c Qs 3s — full river board
+    ]
+    for (const board of boards) {
+      for (const gameType of ['holdem', 'omaha4', 'omaha5'] as const) {
+        const hole = gameType === 'holdem' ? [8, 20] : gameType === 'omaha4' ? [8, 20, 33, 45] : [8, 20, 33, 45, 6]
+        for (let i = 0; i < 120; i++) {
+          const ctx = mkCtx({
+            gameType, hole, board,
+            phase: board.length === 0 ? 'PREFLOP' : 'FLOP',
+            currentBet: board.length === 0 ? 2 : 0,
+            callAmount: board.length === 0 ? 2 : 0,
+            canCheck: board.length > 0,
+            minRaiseTo: board.length === 0 ? 4 : 2,
+            potTotal: 30,
+          })
+          const d = botDecide(ctx)
+          expect(['fold', 'check', 'call', 'bet', 'raise']).toContain(d.type)
+          if (d.type === 'bet' || d.type === 'raise') {
+            expect(d.amount).toBeDefined()
+            expect(d.amount!).toBeGreaterThanOrEqual(ctx.minRaiseTo)
+            expect(d.amount!).toBeLessThanOrEqual(ctx.maxBetTo)
+            expect(Number.isInteger(d.amount!)).toBe(true)
+          }
+        }
+      }
+    }
+  })
+
+  test('Omaha flush draws need exactly two hole cards of the suit', () => {
+    const boardTwo = [0, 4, 25] // 2s 3s 8h — two spades on board
+    // exactly ONE hole spade (4s 7h Td Kc): cannot play a 1-card flush — no outs
+    const holeOne = [8, 21, 34, 47]
+    expect(flushOuts({ ...mkCtx({ hole: holeOne, board: boardTwo, phase: 'FLOP' }) })).toBe(0)
+    // two hole spades + two board spades (4s 5s 7h Td): classic 9-out flush draw
+    const holeTwo = [8, 12, 21, 34]
+    expect(flushOuts({ ...mkCtx({ hole: holeTwo, board: boardTwo, phase: 'FLOP' }) })).toBe(9)
   })
 })

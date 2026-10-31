@@ -19,8 +19,8 @@ export type GameType = 'holdem' | 'omaha4' | 'omaha5'
 
 export const GAME_LABEL: Record<GameType, string> = {
   holdem: "Hold'em",
-  omaha4: 'Omaha 4',
-  omaha5: 'Omaha 5',
+  omaha4: 'PLO 4',
+  omaha5: 'PLO 5',
 }
 
 /** Hole cards dealt per player for each game type. */
@@ -42,6 +42,13 @@ export interface TableConfig {
   maxBuyIn: number
   botCount: number
   gameType?: GameType
+  /**
+   * Betting structure. 'nl' = no-limit (any amount up to the stack);
+   * 'pl' = pot-limit (standard PLO: a raise may size up to the pot after
+   * calling — raise-to cap = currentBet + streetPot + toCall; an opening
+   * bet is capped at the street pot). Defaults to 'nl'.
+   */
+  limit?: 'nl' | 'pl'
   /** tournament tables never rebuy/cash-out; busted players are eliminated */
   tournament?: boolean
   /** hidden from lobby/admin lists — reserved for automated E2E runs */
@@ -164,6 +171,10 @@ export interface BotContext {
   canCheck: boolean
   canRaise: boolean
   activeOpponents: number
+  /** table big blind — lets bots size bets/raises in BB without guessing */
+  bigBlind: number
+  /** actor is on the button (preflop position anchor; postflop acts last) */
+  isButton: boolean
 }
 
 // ---------- Client view models (redacted snapshots) ----------

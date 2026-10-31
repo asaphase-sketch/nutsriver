@@ -140,7 +140,7 @@ export function Lobby({ poker }: LobbyProps) {
       <section className="text-center">
         <h2 className="font-serif text-2xl font-bold text-white sm:text-3xl">nuts<span className="text-orange-400">river</span> lobby</h2>
         <p className="mt-1 text-sm text-white/50">
-          Play-money poker — Hold&apos;em, Omaha 4 &amp; 5, cash games and tournaments.
+          Play-money poker — No-Limit Hold&apos;em &amp; Pot-Limit Omaha, cash games and tournaments.
         </p>
       </section>
 

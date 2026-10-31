@@ -563,6 +563,25 @@ export class PokerTable {
 
   // ---------------- actions ----------------
 
+  /** Total chips currently in the middle: collected pot + all current-street bets. */
+  private streetPot(): number {
+    return this.pot + [...this.seats].reduce((a, p) => a + (p?.bet ?? 0), 0)
+  }
+
+  /**
+   * Pot-limit raise-to cap for `actor` (standard PLO): call first, then raise
+   * up to the resulting pot — cap = currentBet + streetPot + toCall, never
+   * beyond the actor's all-in. With no bet on the street the cap is the street
+   * pot itself (an opening bet may size up to the pot).
+   */
+  private potLimitCap(actor: SeatPlayer): number {
+    const streetPot = this.streetPot()
+    const maxTo = actor.bet + actor.stack
+    const toCall = Math.max(0, this.currentBet - actor.bet)
+    const cap = this.currentBet === 0 ? streetPot : this.currentBet + streetPot + toCall
+    return Math.min(cap, maxTo)
+  }
+
   applyAction(
     userId: string,
     type: 'fold' | 'check' | 'call' | 'bet' | 'raise',
@@ -604,8 +623,12 @@ export class PokerTable {
       case 'bet':
       case 'raise': {
         const maxTo = p.bet + p.stack
+        // server-authoritative cap: pot-limit tables can never be overbet
+        // (the dealer simply caps the amount, as a live dealer would)
+        const cap = this.cfg.limit === 'pl' ? this.potLimitCap(p) : maxTo
         let target = Math.floor(amount ?? 0)
         if (target > maxTo) target = maxTo
+        if (target > cap) target = cap
         const isAllIn = target === maxTo
         // An incomplete all-in raise does NOT reopen betting (PokerStars/TDA
         // rule): a player who has already acted may only call or fold. The
@@ -1155,6 +1178,10 @@ export class PokerTable {
         maxTo > this.currentBet && !(this.lastRaiseIncomplete && self.hasActed) && this.canActPlayers().length >= 2
       const minTo =
         this.currentBet === 0 ? this.cfg.bigBlind : Math.min(this.currentBet + this.minRaise, maxTo)
+      // pot-limit tables: slider/quick-size ceiling is the pot cap; no-limit
+      // tables keep the stack as the only ceiling and expose the true
+      // pot-size raise-to as the 'pot' quick-size reference
+      const potCap = this.cfg.limit === 'pl' ? this.potLimitCap(self) : this.currentBet + this.streetPot() + Math.max(0, toCall)
       selfOptions = {
         canFold: true,
         canCheck: toCall <= 0,
@@ -1163,8 +1190,8 @@ export class PokerTable {
         canBet: this.currentBet === 0 && self.stack > 0 && canRaise,
         canRaise,
         minBetTo: minTo,
-        maxBetTo: maxTo,
-        potBetTo: Math.min(maxTo, this.currentBet + this.pot + Math.max(0, toCall)),
+        maxBetTo: this.cfg.limit === 'pl' ? Math.min(maxTo, potCap) : maxTo,
+        potBetTo: Math.min(maxTo, potCap),
       }
     }
 

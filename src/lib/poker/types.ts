@@ -10,8 +10,15 @@ export type GameType = 'holdem' | 'omaha4' | 'omaha5'
 
 export const GAME_LABEL: Record<GameType, string> = {
   holdem: "Hold'em",
-  omaha4: 'Omaha 4',
-  omaha5: 'Omaha 5',
+  omaha4: 'PLO 4',
+  omaha5: 'PLO 5',
+}
+
+/** Betting structure label — Omaha games run pot-limit (standard PLO rules). */
+export const GAME_LIMIT_LABEL: Record<GameType, string> = {
+  holdem: 'No-Limit',
+  omaha4: 'Pot-Limit',
+  omaha5: 'Pot-Limit',
 }
 
 export const HOLE_CARDS: Record<GameType, number> = {

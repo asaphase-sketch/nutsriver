@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bot, Coins, Gauge, History, Info, ListOrdered, MessageSquare, Send, Sparkles, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips, PHASE_LABEL } from '@/lib/poker/cards'
-import { GAME_LABEL, type ChatMessage, type ClientTableView, type LobbyTableSummary } from '@/lib/poker/types'
+import { type ChatMessage, type ClientTableView, type LobbyTableSummary } from '@/lib/poker/types'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { PlayingCard } from './playing-card'
@@ -272,7 +272,7 @@ export function TableInfoPanel({
   return (
     <PanelShell title="Table info" icon={<Info className="h-3.5 w-3.5 text-orange-300" aria-hidden />} className={className}>
       <div className="divide-y divide-white/5 py-0.5">
-        <InfoRow icon={<Sparkles className="h-3.5 w-3.5" aria-hidden />} label="Game" value={GAME_LABEL[gameType]} />
+        <InfoRow icon={<Sparkles className="h-3.5 w-3.5" aria-hidden />} label="Game" value={gameType === 'holdem' ? "No-Limit Hold'em" : `Pot-Limit Omaha ${gameType === 'omaha5' ? 5 : 4}`} />
         <InfoRow icon={<Coins className="h-3.5 w-3.5" aria-hidden />} label="Stakes" value={`${formatChips(view.smallBlind)} / ${formatChips(view.bigBlind)}`} />
         {tourneyName ? (
           <>

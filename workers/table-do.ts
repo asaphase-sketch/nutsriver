@@ -18,13 +18,13 @@ import type { BotContext, ChatMessage, ClientPlayerView, ClientTableView, TableC
 
 export const TABLE_CONFIGS: TableConfig[] = [
   { key: 'beginners', name: 'Beginners Corner', smallBlind: 1, bigBlind: 2, maxSeats: 9, minBuyIn: 40, maxBuyIn: 600, botCount: 4 },
-  { key: 'omahalite', name: 'Omaha Lite', smallBlind: 1, bigBlind: 2, maxSeats: 9, minBuyIn: 40, maxBuyIn: 600, botCount: 3, gameType: 'omaha4' },
+  { key: 'omahalite', name: 'Omaha Lite', smallBlind: 1, bigBlind: 2, maxSeats: 9, minBuyIn: 40, maxBuyIn: 600, botCount: 3, gameType: 'omaha4', limit: 'pl' },
   { key: 'greenroom', name: 'Green Room', smallBlind: 5, bigBlind: 10, maxSeats: 9, minBuyIn: 200, maxBuyIn: 5000, botCount: 3 },
-  { key: 'omahajunction', name: 'Omaha Junction', smallBlind: 5, bigBlind: 10, maxSeats: 9, minBuyIn: 200, maxBuyIn: 5000, botCount: 3, gameType: 'omaha4' },
+  { key: 'omahajunction', name: 'Omaha Junction', smallBlind: 5, bigBlind: 10, maxSeats: 9, minBuyIn: 200, maxBuyIn: 5000, botCount: 3, gameType: 'omaha4', limit: 'pl' },
   { key: 'feltroyale', name: 'Felt Royale', smallBlind: 10, bigBlind: 20, maxSeats: 9, minBuyIn: 400, maxBuyIn: 8000, botCount: 3 },
-  { key: 'highfive', name: 'High Five Club', smallBlind: 10, bigBlind: 20, maxSeats: 6, minBuyIn: 400, maxBuyIn: 8000, botCount: 2, gameType: 'omaha5' },
+  { key: 'highfive', name: 'High Five Club', smallBlind: 10, bigBlind: 20, maxSeats: 6, minBuyIn: 400, maxBuyIn: 8000, botCount: 2, gameType: 'omaha5', limit: 'pl' },
   { key: 'riverkings', name: 'River Kings', smallBlind: 25, bigBlind: 50, maxSeats: 6, minBuyIn: 1000, maxBuyIn: 20000, botCount: 2 },
-  { key: 'omahaheights', name: 'Omaha Heights 5', smallBlind: 25, bigBlind: 50, maxSeats: 6, minBuyIn: 1000, maxBuyIn: 20000, botCount: 2, gameType: 'omaha5' },
+  { key: 'omahaheights', name: 'Omaha Heights 5', smallBlind: 25, bigBlind: 50, maxSeats: 6, minBuyIn: 1000, maxBuyIn: 20000, botCount: 2, gameType: 'omaha5', limit: 'pl' },
   { key: 'highrollers', name: 'High Rollers', smallBlind: 100, bigBlind: 200, maxSeats: 6, minBuyIn: 4000, maxBuyIn: 50000, botCount: 2 },
   { key: 'nosebleed', name: 'Nosebleed Row', smallBlind: 500, bigBlind: 1000, maxSeats: 6, minBuyIn: 20000, maxBuyIn: 250000, botCount: 2 },
   // hidden table reserved for automated E2E runs (excluded from lobby/admin)
@@ -331,6 +331,8 @@ export class TableDO {
         activeOpponents: s2.seats.filter(
           (x) => x.userId && x.userId !== actorId && (x.status === 'IN_HAND' || x.status === 'ALL_IN'),
         ).length,
+        bigBlind: this.cfg.bigBlind,
+        isButton: actorView.isDealer,
       }
       const decision = botDecide(ctx)
       if ((decision.type === 'bet' || decision.type === 'raise') && !opts.canRaise) {

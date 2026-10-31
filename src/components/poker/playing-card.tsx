@@ -28,6 +28,13 @@ const RANK_SIZE: Record<CardSize, string> = {
   lg: 'text-xl',
 }
 
+const CORNER_PIP: Record<CardSize, string> = {
+  xs: 'text-[8px]',
+  sm: 'text-[10px]',
+  md: 'text-[12px]',
+  lg: 'text-sm',
+}
+
 interface PlayingCardProps {
   /** card code like "As" — omit/undefined for an empty slot */
   code?: string | null
@@ -123,7 +130,11 @@ export function PlayingCard({ code, faceDown, size = 'md', className, animate, f
       )}
       aria-label={`${parsed.rank} of ${parsed.suit === 's' ? 'spades' : parsed.suit === 'h' ? 'hearts' : parsed.suit === 'd' ? 'diamonds' : 'clubs'}`}
     >
-      <span className={cn('text-left tracking-tighter', RANK_SIZE[size], suitColor)}>{parsed.rank}</span>
+      {/* standard corner index: rank over suit pip, top-left + rotated bottom-right */}
+      <span className={cn('flex flex-col items-center gap-px self-start text-center leading-none tracking-tighter', suitColor)}>
+        <span className={cn(RANK_SIZE[size], 'font-bold')}>{parsed.rank}</span>
+        <span className={cn(CORNER_PIP[size])}>{suitSymbol(parsed.suit)}</span>
+      </span>
       <span
         className={cn(
           'absolute inset-0 flex items-center justify-center drop-shadow-sm',
@@ -139,8 +150,9 @@ export function PlayingCard({ code, faceDown, size = 'md', className, animate, f
         )}
         aria-hidden
       />
-      <span className={cn('rotate-180 self-end tracking-tighter', RANK_SIZE[size], suitColor)}>
-        {parsed.rank}
+      <span className={cn('absolute bottom-1 right-1 flex rotate-180 flex-col items-center gap-px text-center leading-none tracking-tighter', suitColor)}>
+        <span className={cn(RANK_SIZE[size], 'font-bold')}>{parsed.rank}</span>
+        <span className={cn(CORNER_PIP[size])}>{suitSymbol(parsed.suit)}</span>
       </span>
     </div>
   )
