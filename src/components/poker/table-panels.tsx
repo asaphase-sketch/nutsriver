@@ -246,7 +246,10 @@ export function HandLogPanel({ view, className }: { view: ClientTableView; class
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2.5 px-3 py-2">
-      <span className="text-orange-300/80">{icon}</span>
+      {/* sample-style icon chip — small rounded tile behind each row icon */}
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-orange-300/80 ring-1 ring-white/10">
+        {icon}
+      </span>
       <span className="w-16 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-white/40">{label}</span>
       <span className="ml-auto text-right text-xs font-bold tabular-nums text-white/90">{value}</span>
     </div>

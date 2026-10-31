@@ -12,8 +12,8 @@ const SIZE_CLASSES: Record<CardSize, string> = {
   sm: 'w-9 h-[3.25rem] rounded-md text-xs',
   md: 'w-11 h-16 rounded-md text-sm',
   lg: 'w-14 h-20 rounded-lg text-base',
-  // board runout — small on phones, sample-sized from sm up
-  board: 'w-9 h-[3.4rem] rounded-md text-xs sm:w-14 sm:h-20 sm:rounded-lg sm:text-base',
+  // board runout — small on phones, sample-sized (big, framed) from sm up
+  board: 'w-9 h-[3.4rem] rounded-md text-xs sm:w-16 sm:h-[5.7rem] sm:rounded-lg sm:text-lg',
 }
 
 const CENTER_SUIT: Record<CardSize, string> = {
@@ -21,7 +21,7 @@ const CENTER_SUIT: Record<CardSize, string> = {
   sm: 'text-lg',
   md: 'text-2xl',
   lg: 'text-3xl',
-  board: 'text-lg sm:text-3xl',
+  board: 'text-lg sm:text-4xl',
 }
 
 const RANK_SIZE: Record<CardSize, string> = {
@@ -29,7 +29,7 @@ const RANK_SIZE: Record<CardSize, string> = {
   sm: 'text-[13px]',
   md: 'text-[17px]',
   lg: 'text-xl',
-  board: 'text-[13px] sm:text-xl',
+  board: 'text-[13px] sm:text-2xl',
 }
 
 const CORNER_PIP: Record<CardSize, string> = {
@@ -122,15 +122,29 @@ export function PlayingCard({ code, faceDown, size = 'md', className, animate, f
     : red
       ? 'text-rose-600'
       : 'text-slate-900'
+  // sample-style neon frame: each card wears a soft suit-colored border glow
+  // (red hearts, blue clubs in the sample) — four-color mode shifts the hues
+  const frame = fourColor
+    ? parsed.suit === 'd'
+      ? 'ring-sky-400/70'
+      : parsed.suit === 'c'
+        ? 'ring-emerald-400/70'
+        : red
+          ? 'ring-rose-500/70'
+          : 'ring-slate-400/50'
+    : red
+      ? 'ring-rose-500/70'
+      : 'ring-slate-400/50'
   return (
     <div
       style={delayStyle}
       className={cn(
-        'relative flex select-none flex-col justify-between bg-gradient-to-b from-white to-slate-100 p-1 font-semibold leading-none text-slate-900 shadow-lg shadow-black/30 ring-1 ring-black/10',
+        'relative flex select-none flex-col justify-between bg-gradient-to-b from-white to-slate-100 p-1 font-semibold leading-none text-slate-900 shadow-lg shadow-black/30 ring-2',
+        frame,
         sizeCls,
         animate && 'card-deal',
         flip && 'card-flip',
-        highlight && 'card-win ring-2 ring-orange-300',
+        highlight && 'card-win ring-4 ring-orange-300',
         className,
       )}
       aria-label={`${parsed.rank} of ${parsed.suit === 's' ? 'spades' : parsed.suit === 'h' ? 'hearts' : parsed.suit === 'd' ? 'diamonds' : 'clubs'}`}

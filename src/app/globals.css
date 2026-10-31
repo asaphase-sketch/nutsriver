@@ -135,7 +135,7 @@
   background-color: #8e1f1c;
   background-image:
     var(--felt-mark),
-    radial-gradient(ellipse 75% 65% at 50% 42%, #b4312c 0%, #8e1f1c 45%, #671413 78%, #4a0d0d 100%);
+    radial-gradient(ellipse 75% 65% at 50% 42%, #c23a33 0%, #982620 45%, #6b1513 78%, #430c0c 100%);
   background-repeat: no-repeat, no-repeat;
   background-position: center 30%, center;
   box-shadow:
@@ -160,10 +160,20 @@
     linear-gradient(135deg, #8c1f1d 0%, #5d1211 55%, #3f0b0a 100%);
 }
 
+/* sample-style room: the table screen sits in a near-black card room; a soft
+   crimson lamp glow pools behind the felt. Rendered as a fixed overlay (first
+   child of the table view) so the lobby keeps its own background. */
+.table-room-bg {
+  background:
+    radial-gradient(ellipse 56% 46% at 50% 40%, rgba(150, 30, 18, 0.32), transparent 72%),
+    radial-gradient(ellipse 92% 62% at 50% -12%, rgba(64, 16, 9, 0.5), transparent 62%),
+    #070405;
+}
+
 /* dark neon side panel (chat / last hand / stats / table info) */
 .neon-panel {
   border: 1px solid rgba(255, 138, 61, 0.18);
-  background: linear-gradient(180deg, rgba(30, 16, 13, 0.92), rgba(19, 11, 9, 0.92));
+  background: linear-gradient(180deg, rgba(26, 13, 10, 0.94), rgba(15, 9, 7, 0.94));
   border-radius: 1rem;
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.45),
@@ -262,16 +272,17 @@
   animation: card-win-pulse 2.4s ease-in-out infinite;
 }
 
-/* premium felt: radial lighting, diamond weave, vignette + rail shadow */
+/* premium felt: radial lighting, diamond weave, vignette + rail shadow —
+   hot crimson pool in the middle, deep shade at the rails (sample look) */
 .felt-2 {
   background-color: #8e201c;
   background-image:
     var(--felt-mark),
-    radial-gradient(ellipse 68% 58% at 50% 40%, rgba(255, 158, 118, 0.12), transparent 64%),
-    radial-gradient(ellipse 120% 100% at 50% 118%, rgba(0, 0, 0, 0.4), transparent 58%),
+    radial-gradient(ellipse 68% 58% at 50% 40%, rgba(255, 170, 130, 0.16), transparent 64%),
+    radial-gradient(ellipse 120% 100% at 50% 118%, rgba(0, 0, 0, 0.5), transparent 58%),
     repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.04) 0 3px, transparent 3px 7px),
     repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.045) 0 3px, transparent 3px 7px),
-    radial-gradient(ellipse at 50% 40%, #b2322c 0%, #8e201c 52%, #5e1311 100%);
+    radial-gradient(ellipse 95% 85% at 50% 40%, #c33a31 0%, #98251f 44%, #651412 74%, #3f0b0b 100%);
   background-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat, no-repeat;
   background-position: center 30%, center, center, center, center, center;
 }
@@ -338,27 +349,29 @@
   animation: felt-sheen 17s ease-in-out infinite;
 }
 
-/* obsidian rail with neon-orange rim light — softer halo, 3D bevel (light on
-   top edge, shade on bottom) and a very slow breathing glow so the table
-   feels alive without strobing */
+/* obsidian rail with neon-orange rim light — the sample's double glow: a crisp
+   bright line hugging the outer edge plus a wide soft halo, on a 3D bevel
+   (light on top edge, shade on bottom) with a very slow breathing pulse */
 @keyframes rail-breathe {
   0%,
   100% {
     box-shadow:
-      0 0 22px rgba(255, 130, 55, 0.26),
-      0 0 72px rgba(255, 110, 40, 0.13),
-      0 24px 64px rgba(0, 0, 0, 0.6),
-      0 4px 12px rgba(0, 0, 0, 0.45),
-      inset 0 1.5px 1px rgba(255, 255, 255, 0.22),
+      0 0 0 1.5px rgba(255, 178, 108, 0.6),
+      0 0 26px rgba(255, 130, 55, 0.3),
+      0 0 96px rgba(255, 110, 40, 0.17),
+      0 26px 70px rgba(0, 0, 0, 0.65),
+      0 6px 16px rgba(0, 0, 0, 0.5),
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.24),
       inset 0 -2px 3px rgba(0, 0, 0, 0.55);
   }
   50% {
     box-shadow:
-      0 0 34px rgba(255, 140, 60, 0.4),
-      0 0 100px rgba(255, 115, 45, 0.2),
-      0 24px 64px rgba(0, 0, 0, 0.6),
-      0 4px 12px rgba(0, 0, 0, 0.45),
-      inset 0 1.5px 1px rgba(255, 255, 255, 0.22),
+      0 0 0 1.5px rgba(255, 196, 130, 0.85),
+      0 0 40px rgba(255, 145, 62, 0.46),
+      0 0 130px rgba(255, 115, 45, 0.25),
+      0 26px 70px rgba(0, 0, 0, 0.65),
+      0 6px 16px rgba(0, 0, 0, 0.5),
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.24),
       inset 0 -2px 3px rgba(0, 0, 0, 0.55);
   }
 }
@@ -366,8 +379,8 @@
   border: 10px solid transparent;
   border-radius: 2.2rem;
   background:
-    linear-gradient(#1a0d0a, #1a0d0a) padding-box,
-    linear-gradient(160deg, #ffb977 0%, #ff8a3d 26%, #ffd2a0 50%, #f06a22 74%, #ffa254 100%) border-box;
+    linear-gradient(#190c09, #190c09) padding-box,
+    linear-gradient(160deg, #ffd2a0 0%, #ff8a3d 24%, #ffe2bd 50%, #ef6820 74%, #ffbd7d 100%) border-box;
   animation: rail-breathe 7.5s ease-in-out infinite;
 }
 
@@ -413,6 +426,20 @@
    this class now only tunes its strength */
 .felt-watermark {
   opacity: 0.9;
+}
+
+/* big faint brand wordmark printed on the cloth center (sample's watermark) */
+.felt-wordmark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 900;
+  color: rgba(255, 235, 218, 0.055);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
 }
 
 /* chip stack for bets — softer drop shadow reads as height above the felt */

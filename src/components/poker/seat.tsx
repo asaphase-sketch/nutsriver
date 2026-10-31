@@ -33,6 +33,21 @@ const ACTION_LABEL: Record<string, string> = {
   raise: 'Raise',
 }
 
+/** per-seat avatar skins — colored rings like the sample's mixed portrait
+ *  frames (gold / cyan / red …), stable per seat so each player reads as a
+ *  distinct character around the table */
+const SEAT_SKINS = [
+  { ring: 'ring-amber-300/80', grad: 'from-amber-500 to-amber-800' },
+  { ring: 'ring-orange-300/80', grad: 'from-orange-500 to-orange-800' },
+  { ring: 'ring-rose-400/80', grad: 'from-rose-500 to-rose-900' },
+  { ring: 'ring-sky-400/80', grad: 'from-sky-500 to-sky-900' },
+  { ring: 'ring-emerald-400/80', grad: 'from-emerald-500 to-emerald-900' },
+  { ring: 'ring-violet-400/80', grad: 'from-violet-500 to-violet-900' },
+  { ring: 'ring-fuchsia-400/80', grad: 'from-fuchsia-500 to-fuchsia-900' },
+  { ring: 'ring-cyan-300/80', grad: 'from-cyan-500 to-cyan-900' },
+  { ring: 'ring-lime-300/80', grad: 'from-lime-500 to-lime-900' },
+] as const
+
 /** ms between each dealt card around the table */
 const DEAL_STEP_MS = 230
 
@@ -79,6 +94,7 @@ export function Seat({
   const won = player.winAmount != null && player.winAmount > 0
   const cardSize = isSelf ? 'md' : 'sm'
   const urgent = isActor && secondsLeft > 0 && secondsLeft <= 6
+  const skin = SEAT_SKINS[player.seatIndex % SEAT_SKINS.length]
 
   /** card i of this seat appears on its i-th pass around the table */
   const dealDelay = (pass: number) =>
@@ -113,7 +129,8 @@ export function Seat({
                 flip={!isSelf && player.cardsRevealed}
                 highlight={won && !folded && !!winCards?.has(c)}
                 className={cn(
-                  isSelf && 'ring-1 ring-amber-300/60 shadow-[0_0_16px_rgba(251,191,36,0.3)]',
+                  // outline (not ring) — the suit-colored frame owns the ring
+                  isSelf && 'outline-2 outline-offset-1 outline-amber-300/70',
                   folded && 'grayscale',
                 )}
               />
@@ -125,7 +142,7 @@ export function Seat({
                 animate={dealNonce > 0}
                 delayMs={dealDelay(i)}
                 className={cn(
-                  isSelf && 'ring-1 ring-amber-300/60',
+                  isSelf && 'outline-2 outline-offset-1 outline-amber-300/70',
                   folded && 'grayscale',
                 )}
               />
@@ -134,18 +151,18 @@ export function Seat({
         ) : null}
       </div>
 
-      {/* avatar — sample-style portrait circle riding the plate's top edge */}
+      {/* avatar — sample-style portrait circle riding the plate's top edge,
+          ringed in the seat's own color */}
       <span
         className={cn(
-          'z-10 -mb-3.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold uppercase shadow-lg shadow-black/50 sm:h-11 sm:w-11 sm:text-sm',
+          'z-10 -mb-4 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/15 text-sm font-bold uppercase shadow-lg shadow-black/50 ring-2 sm:h-14 sm:w-14 sm:text-base',
           player.isBot
-            ? 'border-white/20 bg-gradient-to-b from-slate-700 to-slate-900 text-slate-300'
-            : 'border-orange-300/80 bg-gradient-to-b from-orange-500 to-orange-800 text-orange-50',
+            ? cn('bg-gradient-to-b from-slate-700 to-slate-900 text-slate-300', skin.ring)
+            : cn('bg-gradient-to-b text-orange-50', skin.grad, skin.ring),
           !player.connected && 'opacity-50',
-          isSelf && 'ring-2 ring-amber-300/70',
         )}
       >
-        {player.isBot ? <Bot className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden /> : player.name.charAt(0)}
+        {player.isBot ? <Bot className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden /> : player.name.charAt(0)}
       </span>
 
       {/* name column — floats on the rail like the sample (soft dark backdrop) */}

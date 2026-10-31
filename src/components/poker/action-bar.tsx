@@ -105,7 +105,7 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
           type="button"
           disabled={busy || !options.canFold}
           onClick={() => onAction('fold')}
-          className="h-12 min-w-[7rem] flex-1 rounded-2xl border border-rose-500/40 bg-[#1f0d0d]/90 text-sm font-black uppercase tracking-widest text-rose-300 shadow-lg shadow-black/40 transition hover:border-rose-400/60 hover:bg-rose-950/60 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-8"
+          className="h-[3.4rem] min-w-[7rem] flex-1 rounded-[1.35rem] border border-rose-500/45 bg-[#240d0e]/90 text-sm font-black uppercase tracking-widest text-rose-300 shadow-lg shadow-black/40 transition hover:border-rose-400/70 hover:bg-rose-950/60 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-9"
         >
           Fold
         </button>
@@ -115,7 +115,7 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
             type="button"
             disabled={busy}
             onClick={() => onAction('check')}
-            className="h-12 min-w-[7rem] flex-1 rounded-2xl border border-white/15 bg-white/10 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-black/40 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-8"
+            className="h-[3.4rem] min-w-[7rem] flex-1 rounded-[1.35rem] border border-white/15 bg-white/[0.07] text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-black/40 transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-9"
           >
             Check
           </button>
@@ -124,7 +124,7 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
             type="button"
             disabled={busy || !options.canCall}
             onClick={() => onAction('call')}
-            className="h-12 min-w-[7.5rem] flex-1 rounded-2xl border border-sky-400/40 bg-sky-950/50 text-sm font-black uppercase tracking-widest text-sky-200 shadow-lg shadow-black/40 transition hover:bg-sky-900/50 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-6"
+            className="h-[3.4rem] min-w-[7.5rem] flex-1 rounded-[1.35rem] border border-sky-400/45 bg-[#0b1a27]/85 text-sm font-black uppercase tracking-widest text-sky-200 shadow-lg shadow-black/40 transition hover:border-sky-300/60 hover:bg-sky-900/50 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-7"
           >
             Call {formatChips(options.callAmount)}
           </button>
@@ -135,7 +135,7 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
             type="button"
             disabled={busy}
             onClick={raise}
-            className="neon-cta h-12 min-w-[8.5rem] flex-1 rounded-2xl text-sm font-black uppercase tracking-widest text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-8"
+            className="neon-cta h-[3.4rem] min-w-[8.5rem] flex-1 rounded-[1.35rem] text-sm font-black uppercase tracking-widest text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-9"
           >
             <span className="block leading-tight">{options.canBet ? 'Bet' : 'Raise to'}</span>
             <span className="block text-base leading-tight">{formatChips(amount)}</span>
@@ -185,7 +185,7 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
                 type="button"
                 onClick={() => setAmount(q.to)}
                 className={cn(
-                  'min-h-8 rounded-lg border border-white/10 bg-white/5 px-3 text-[11px] font-bold text-white/75',
+                  'min-h-8 rounded-full border border-white/10 bg-white/[0.06] px-3.5 text-[11px] font-bold text-white/75',
                   'transition hover:border-orange-300/50 hover:bg-orange-400/10 hover:text-orange-200',
                 )}
               >

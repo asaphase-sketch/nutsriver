@@ -240,6 +240,9 @@ export function TableView({ poker, view }: TableViewProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+      {/* sample-style card room — near-black walls, crimson lamp glow behind the
+          felt; fixed so the lighting stays put while content scrolls */}
+      <div aria-hidden className="table-room-bg pointer-events-none fixed inset-0 z-0" />
       {/* table header — brand pill · game info pill · controls */}
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -369,6 +372,10 @@ export function TableView({ poker, view }: TableViewProps) {
           >
           {/* felt is a pure background layer now — seats/cards ride the rail unclipped */}
           <div aria-hidden className="felt felt-2 felt-watermark felt-oval absolute inset-0 overflow-hidden">
+            {/* big faint brand printed on the cloth (sample's center watermark) */}
+            <span aria-hidden className="felt-wordmark font-serif text-4xl lowercase tracking-[0.08em] sm:text-6xl">
+              nutsriver
+            </span>
             <span aria-hidden className="felt-sheen motion-reduce:hidden" />
           </div>
             {/* tournament strip */}
@@ -506,7 +513,7 @@ export function TableView({ poker, view }: TableViewProps) {
               />
             </div>
           ) : isSeated ? (
-            <div className="rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-center text-xs text-white/50">
+            <div className="rounded-2xl border border-white/5 bg-black/45 px-4 py-3 text-center text-xs text-white/45 backdrop-blur-sm">
               {selfSittingOut
                 ? 'You are sitting out — press “Sit in” to join the next hand.'
                 : view.phase === 'WAITING' || view.phase === 'SHOWDOWN'
@@ -514,7 +521,7 @@ export function TableView({ poker, view }: TableViewProps) {
                   : 'Hand in progress — your turn will come around.'}
             </div>
           ) : (
-            <div className="rounded-xl border border-amber-300/20 bg-amber-400/5 px-4 py-3 text-center text-xs text-amber-200/80">
+            <div className="rounded-2xl border border-amber-300/15 bg-black/40 px-4 py-3 text-center text-xs text-amber-200/70 backdrop-blur-sm">
               {tournament
                 ? 'You are watching this tournament table.'
                 : 'You are watching this table. Pick an open seat to play the next hand.'}
