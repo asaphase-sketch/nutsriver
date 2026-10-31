@@ -490,6 +490,7 @@ const worker: ExportedHandler<Env> = {
           if (typeof v === 'number' && Number.isFinite(v)) policy.tableCounts[cfg.key] = Math.max(0, Math.min(Math.floor(v), cfg.maxSeats))
         }
         await setRobotsPolicy(env.DB, policy)
+        await adminLog(env.DB, session.user.id, session.user.username, 'robots.policy', 'site', `${policy.enabled ? 'enabled' : 'disabled'} — bot seats: ${JSON.stringify(policy.tableCounts)}`)
         const applied: string[] = []
         for (const cfg of TABLE_CONFIGS) {
           try {

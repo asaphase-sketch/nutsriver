@@ -119,6 +119,11 @@ export class TableDO {
     if (savedEngine) {
       try {
         this.table.restoreState(savedEngine)
+        // policy may have changed while this table slept — reconcile seat
+        // counts on every wake. Restore alone replays saved seats, so a
+        // policy pushed while asleep (or an ops fix written straight to
+        // D1) would otherwise never take effect and the table stays dead.
+        this.applyBotTarget(this.botTarget())
       } catch (e) {
         console.error(`[${this.cfg.key}] restore failed — starting fresh`, e)
         this.applyBotTarget(this.botTarget())
