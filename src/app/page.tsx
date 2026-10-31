@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Coins, KeyRound, Loader2, LogOut, Shield, Spade, Wifi, WifiOff } from 'lucide-react'
+import { Coins, Diamond, KeyRound, Loader2, LogOut, Shield, Spade, Wifi, WifiOff } from 'lucide-react'
 import { formatChips } from '@/lib/poker/cards'
 import { usePoker } from '@/hooks/use-poker'
 import { useToast } from '@/hooks/use-toast'
@@ -30,9 +30,9 @@ export default function Home() {
   const poker = usePoker()
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#0c1512] text-white">
-      {/* ambient background */}
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(16,90,60,0.35),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(120,80,20,0.12),transparent_50%)]" />
+    <div className="flex min-h-screen flex-col bg-[#120a08] text-white">
+      {/* ambient background — Energy-Tilt ember glow */}
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(190,52,18,0.30),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(255,122,47,0.10),transparent_50%)]" />
 
       <Header poker={poker} />
 
@@ -50,7 +50,7 @@ export default function Home() {
 
       <footer className="mt-auto border-t border-white/5 py-4">
         <p className="px-4 text-center text-[11px] leading-relaxed text-white/35">
-          NutsRiver is a free entertainment product. Play-money chips have no monetary value, cannot be
+          nutsriver is a free entertainment product. Play-money chips have no monetary value, cannot be
           purchased and cannot be redeemed. No real-money gambling takes place here. 18+ recommended. Play responsibly.
         </p>
       </footer>
@@ -63,19 +63,20 @@ function Header({ poker }: { poker: ReturnType<typeof usePoker> }) {
   if (!poker.user) return null
   const low = poker.chips < 1000
   return (
-    <header className="sticky top-0 z-30 border-b border-white/5 bg-[#0c1512]/90 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4">
+    <header className="sticky top-0 z-30 border-b border-orange-300/10 bg-[#120a08]/90 backdrop-blur">
+      <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center gap-3 px-4">
         <button
           type="button"
           onClick={() => poker.setActiveTable(null)}
           className="flex items-center gap-2"
-          aria-label="NutsRiver home"
+          aria-label="nutsriver home"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-700 shadow-inner">
-            <Spade className="h-4 w-4 text-amber-300" aria-hidden />
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-b from-orange-400 to-orange-700 shadow-[0_0_14px_rgba(255,122,47,0.4)]">
+            <Spade className="h-4 w-4 text-[#2a0f05]" aria-hidden />
           </span>
-          <span className="font-serif text-lg font-black tracking-wide text-white">
-            Nuts<span className="text-amber-300">River</span>
+          <span className="flex items-center gap-1 text-lg font-black lowercase tracking-wide text-white">
+            nuts<span className="text-orange-400">river</span>
+            <Diamond className="h-2.5 w-2.5 fill-orange-400 text-orange-400" aria-hidden />
           </span>
         </button>
 
@@ -97,16 +98,16 @@ function Header({ poker }: { poker: ReturnType<typeof usePoker> }) {
 
           <span
             className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-bold tabular-nums ${
-              low ? 'border-amber-300/50 bg-amber-400/10 text-amber-200' : 'border-white/10 bg-white/5 text-white'
+              low ? 'border-orange-300/50 bg-orange-400/10 text-orange-200' : 'border-white/10 bg-white/5 text-white'
             }`}
             title="Play-money chip balance"
           >
-            <Coins className="h-3.5 w-3.5 text-amber-300" aria-hidden />
+            <Coins className="h-3.5 w-3.5 text-orange-300" aria-hidden />
             {formatChips(poker.chips)}
           </span>
 
           {low && (
-            <Button size="sm" className="hidden bg-amber-500 font-bold text-slate-950 hover:bg-amber-400 sm:inline-flex" onClick={() => poker.claimFreeChips()}>
+            <Button size="sm" className="hidden bg-gradient-to-b from-orange-400 to-orange-600 font-bold text-slate-950 hover:from-orange-300 hover:to-orange-500 sm:inline-flex" onClick={() => poker.claimFreeChips()}>
               Free chips
             </Button>
           )}
@@ -115,7 +116,7 @@ function Header({ poker }: { poker: ReturnType<typeof usePoker> }) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-800 text-xs font-bold uppercase text-emerald-100 ring-1 ring-emerald-500/40 transition hover:ring-amber-300/60"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-b from-orange-500 to-orange-800 text-xs font-bold uppercase text-orange-50 ring-1 ring-orange-400/40 transition hover:ring-orange-300/70"
                 aria-label="Account menu"
               >
                 {poker.user.username.charAt(0)}
@@ -207,7 +208,7 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
         onClose()
       }}
     >
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-sm rounded-2xl border-white/10 bg-[#0e1a16] p-5 text-white sm:p-6">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-sm rounded-2xl border-orange-300/15 bg-[#180d0a] p-5 text-white sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <KeyRound className="h-5 w-5 text-emerald-300" aria-hidden /> Change password
@@ -287,8 +288,8 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
 function Splash() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 py-32">
-      <span className="flex h-14 w-14 animate-pulse items-center justify-center rounded-2xl bg-emerald-700">
-        <Spade className="h-7 w-7 text-amber-300" aria-hidden />
+      <span className="flex h-14 w-14 animate-pulse items-center justify-center rounded-2xl bg-gradient-to-b from-orange-400 to-orange-700 shadow-[0_0_30px_rgba(255,122,47,0.45)]">
+        <Spade className="h-7 w-7 text-[#2a0f05]" aria-hidden />
       </span>
       <p className="text-sm text-white/50">Shuffling up…</p>
     </div>

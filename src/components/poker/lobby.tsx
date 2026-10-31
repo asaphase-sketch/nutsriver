@@ -138,7 +138,7 @@ export function Lobby({ poker }: LobbyProps) {
       ))}
 
       <section className="text-center">
-        <h2 className="font-serif text-2xl font-bold text-white sm:text-3xl">NutsRiver Lobby</h2>
+        <h2 className="font-serif text-2xl font-bold text-white sm:text-3xl">nuts<span className="text-orange-400">river</span> lobby</h2>
         <p className="mt-1 text-sm text-white/50">
           Play-money poker — Hold&apos;em, Omaha 4 &amp; 5, cash games and tournaments.
         </p>
@@ -616,7 +616,7 @@ function TournamentLobby({ poker, now }: { poker: PokerClient; now: number }) {
     <section className="flex flex-col gap-4" aria-label="Tournaments">
       {live.length === 0 && (
         <p className="rounded-2xl border border-white/10 bg-slate-950/70 py-12 text-center text-sm text-white/40">
-          No tournaments right now — ask the room admin to open one from the NutsRiver control panel.
+          No tournaments right now — ask the room admin to open one from the nutsriver control panel.
         </p>
       )}
 

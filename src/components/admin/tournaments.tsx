@@ -40,7 +40,7 @@ export function TournamentsSection() {
   const [rows, setRows] = useState<AdminTournament[]>([])
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({
-    name: 'NutsRiver Cup',
+    name: 'nutsriver cup',
     gameType: 'holdem' as GameType,
     kind: 'sitgo',
     buyIn: 1000,
@@ -122,7 +122,7 @@ export function TournamentsSection() {
               className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/50"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="NutsRiver Cup"
+              placeholder="nutsriver cup"
             />
           </Field>
           <Field label="Game">

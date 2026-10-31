@@ -63,7 +63,7 @@ export function Seat({
         className={cn(
           'group flex h-14 w-14 flex-col items-center justify-center rounded-full border-2 border-dashed sm:h-16 sm:w-16',
           canTakeSeat
-            ? 'border-white/30 bg-black/20 text-white/50 transition hover:border-amber-300/70 hover:bg-black/40 hover:text-amber-200'
+            ? 'border-white/30 bg-black/20 text-white/50 transition hover:border-orange-300/70 hover:bg-black/40 hover:text-orange-200'
             : 'border-white/10 bg-black/10 text-white/25',
         )}
       >
@@ -132,9 +132,9 @@ export function Seat({
       {/* name plate */}
       <div
         className={cn(
-          'relative w-full overflow-hidden rounded-lg border bg-slate-900/90 px-2 py-1.5 shadow-lg shadow-black/50 backdrop-blur-sm',
-          isActor ? 'border-amber-300 shadow-amber-500/20' : 'border-white/10',
-          isSelf && 'ring-1 ring-emerald-400/60',
+          'relative w-full overflow-hidden rounded-lg border bg-[#190e0b]/95 px-2 py-1.5 shadow-lg shadow-black/50 backdrop-blur-sm',
+          isActor ? 'border-orange-300/90 shadow-orange-500/25' : 'border-white/10',
+          isSelf && 'ring-1 ring-orange-300/70',
           won && 'border-emerald-300 bg-emerald-950/90',
           isActor && !urgent && 'actor-glow',
           urgent && 'timer-urgent',
@@ -154,7 +154,7 @@ export function Seat({
           <span
             className={cn(
               'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase sm:h-7 sm:w-7 sm:text-xs',
-              player.isBot ? 'bg-slate-700 text-slate-300' : 'bg-emerald-800 text-emerald-100',
+              player.isBot ? 'bg-slate-700 text-slate-300' : 'bg-gradient-to-b from-orange-500 to-orange-800 text-orange-50',
               !player.connected && 'opacity-50',
             )}
           >
@@ -167,7 +167,7 @@ export function Seat({
               </span>
               {!player.connected && <WifiOff className="h-2.5 w-2.5 shrink-0 text-rose-400" aria-label="disconnected" />}
             </div>
-            <div className={cn('font-medium tabular-nums text-amber-200/90', isSelf ? 'text-[11px] sm:text-sm' : 'text-[9px] sm:text-[11px]')}>
+            <div className={cn('font-medium tabular-nums text-orange-200/90', isSelf ? 'text-[11px] sm:text-sm' : 'text-[9px] sm:text-[11px]')}>
               {formatChips(player.stack)}
             </div>
           </div>
@@ -212,7 +212,18 @@ export function Seat({
             <span className="rounded bg-black/40 px-1 text-[8px] font-semibold uppercase text-white/50">Fold</span>
           )}
           {!compact && player.lastAction && (player.status === 'IN_HAND' || folded) && (
-            <span className="text-[8px] font-medium uppercase tracking-wide text-white/45">
+            <span
+              className={cn(
+                'rounded px-1 text-[8px] font-black uppercase tracking-wide',
+                player.lastAction.type === 'bet' || player.lastAction.type === 'raise'
+                  ? 'bg-rose-600/90 text-white'
+                  : player.lastAction.type === 'call'
+                    ? 'bg-sky-600/80 text-white'
+                    : player.lastAction.type === 'check'
+                      ? 'bg-white/15 text-white/70'
+                      : 'bg-black/40 text-white/50',
+              )}
+            >
               {ACTION_LABEL[player.lastAction.type] ?? player.lastAction.type}
               {player.lastAction.amount != null && player.lastAction.type !== 'fold' && player.lastAction.type !== 'check'
                 ? ` ${formatChips(player.lastAction.amount)}`

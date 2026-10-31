@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { Coins, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips } from '@/lib/poker/cards'
 import type { SelfOptions } from '@/lib/poker/types'
-import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 
 interface ActionBarProps {
@@ -15,6 +15,10 @@ interface ActionBarProps {
   busy?: boolean
   /** seconds remaining on the action clock (0 = no clock) */
   secondsLeft?: number
+  /** real lobby balance — shown as the sample's BALANCE pill */
+  balance?: number
+  /** + button next to the balance pill (free top-up when low) */
+  onTopUp?: () => void
   onAction: (type: 'fold' | 'check' | 'call' | 'bet' | 'raise', amount?: number) => void
 }
 
@@ -23,7 +27,7 @@ function clampRound(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(v)))
 }
 
-export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLeft = 0, onAction }: ActionBarProps) {
+export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLeft = 0, balance, onTopUp, onAction }: ActionBarProps) {
   const canAggress = options.canBet || options.canRaise
   const urgent = secondsLeft > 0 && secondsLeft <= 6
   // null = not touched yet → derive from the live options (no sync-effect needed)
@@ -32,6 +36,13 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
     ? options.minBetTo
     : clampRound(rawAmount, options.minBetTo, options.maxBetTo)
   const setAmount = (v: number) => setRawAmount(v)
+
+  const step = useMemo(() => {
+    const bb = Math.max(bigBlind, 1)
+    if (options.maxBetTo <= 20 * bb) return bb
+    if (options.maxBetTo <= 100 * bb) return 5 * bb
+    return 25 * bb
+  }, [bigBlind, options.maxBetTo])
 
   const quickSizes = useMemo(() => {
     if (!canAggress) return []
@@ -64,85 +75,109 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
     return () => window.removeEventListener('keydown', onKey)
   }, [options, canAggress, amount, onAction])
 
+  const raise = () => onAction(options.canBet ? 'bet' : 'raise', amount)
+
   return (
     <div
       className={cn(
-        'z-20 w-full rounded-xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-black/60 backdrop-blur',
-        'flex flex-col gap-3',
+        'neon-panel z-20 w-full border-orange-300/25 p-2.5 sm:p-3',
+        'flex flex-col gap-2.5',
       )}
       role="toolbar"
       aria-label="Poker actions"
     >
-      <div className="flex items-center justify-center gap-2 sm:gap-3">
+      {/* primary row — fold · check/call · raise */}
+      <div className="flex items-stretch justify-center gap-2 sm:gap-3">
         {secondsLeft > 0 && (
           <span
             className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-black tabular-nums sm:h-11 sm:w-11',
+              'flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full border text-sm font-black tabular-nums',
               urgent
                 ? 'timer-urgent border-rose-400 bg-rose-950/80 text-rose-200'
-                : 'border-amber-300/50 bg-amber-400/10 text-amber-200',
+                : 'border-orange-300/50 bg-orange-400/10 text-orange-200',
             )}
             aria-label={`${secondsLeft} seconds to act`}
           >
             {secondsLeft}
           </span>
         )}
-        <Button
-          variant="destructive"
-          className="h-11 min-w-[5.5rem] flex-1 text-sm font-bold uppercase tracking-wide sm:flex-none sm:px-6"
+        <button
+          type="button"
           disabled={busy || !options.canFold}
           onClick={() => onAction('fold')}
+          className="h-12 min-w-[7rem] flex-1 rounded-xl border-2 border-rose-500/70 bg-rose-950/40 text-sm font-black uppercase tracking-widest text-rose-200 shadow-lg shadow-black/40 transition hover:bg-rose-900/50 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-8"
         >
-          Fold <span className="ml-1 hidden text-[10px] opacity-60 sm:inline">F</span>
-        </Button>
+          Fold
+        </button>
 
         {options.canCheck ? (
-          <Button
-            className="h-11 min-w-[5.5rem] flex-1 bg-slate-700 text-sm font-bold uppercase tracking-wide hover:bg-slate-600 sm:flex-none sm:px-6"
+          <button
+            type="button"
             disabled={busy}
             onClick={() => onAction('check')}
+            className="h-12 min-w-[7rem] flex-1 rounded-xl border border-white/15 bg-white/10 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-black/40 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-8"
           >
-            Check <span className="ml-1 hidden text-[10px] opacity-60 sm:inline">C</span>
-          </Button>
+            Check
+          </button>
         ) : (
-          <Button
-            className="h-11 min-w-[6.5rem] flex-1 bg-emerald-600 text-sm font-bold uppercase tracking-wide hover:bg-emerald-500 sm:flex-none sm:px-6"
+          <button
+            type="button"
             disabled={busy || !options.canCall}
             onClick={() => onAction('call')}
+            className="h-12 min-w-[7.5rem] flex-1 rounded-xl border border-sky-400/40 bg-sky-950/50 text-sm font-black uppercase tracking-widest text-sky-200 shadow-lg shadow-black/40 transition hover:bg-sky-900/50 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-6"
           >
             Call {formatChips(options.callAmount)}
-            <span className="ml-1 hidden text-[10px] opacity-60 sm:inline">C</span>
-          </Button>
+          </button>
         )}
 
         {canAggress && (
-          <Button
-            className="h-11 min-w-[6.5rem] flex-1 bg-amber-500 text-sm font-bold uppercase tracking-wide text-slate-950 hover:bg-amber-400 sm:flex-none sm:px-6"
+          <button
+            type="button"
             disabled={busy}
-            onClick={() => onAction(options.canBet ? 'bet' : 'raise', amount)}
+            onClick={raise}
+            className="neon-cta h-12 min-w-[8.5rem] flex-1 rounded-xl text-sm font-black uppercase tracking-widest text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none sm:px-8"
           >
-            {options.canBet ? 'Bet' : 'Raise to'} {formatChips(amount)}
-            <span className="ml-1 hidden text-[10px] opacity-60 sm:inline">R</span>
-          </Button>
+            <span className="block leading-tight">{options.canBet ? 'Bet' : 'Raise to'}</span>
+            <span className="block text-base leading-tight">{formatChips(amount)}</span>
+          </button>
         )}
       </div>
 
+      {/* sizing row — stepper · slider · quick sizes */}
       {canAggress && (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3">
-            <Slider
-              aria-label="Bet amount"
-              min={options.minBetTo}
-              max={options.maxBetTo}
-              step={1}
-              value={[amount]}
-              onValueChange={([v]) => setAmount(clampRound(v, options.minBetTo, options.maxBetTo))}
-              className="flex-1"
-            />
-            <span className="w-16 text-right text-sm font-bold tabular-nums text-amber-200">
-              {formatChips(amount)}
-            </span>
+          <div className="mx-auto flex w-full max-w-md items-center gap-2">
+            <button
+              type="button"
+              aria-label="Decrease bet"
+              disabled={busy}
+              onClick={() => setAmount(clampRound(amount - step, options.minBetTo, options.maxBetTo))}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-lg font-black text-white/80 transition hover:border-orange-300/40 hover:text-white disabled:opacity-40"
+            >
+              −
+            </button>
+            <div className="relative flex h-9 flex-1 items-center justify-center rounded-lg border border-orange-300/25 bg-black/40">
+              <span className="text-sm font-black tabular-nums text-orange-100">{formatChips(amount)}</span>
+            </div>
+            <button
+              type="button"
+              aria-label="Increase bet"
+              disabled={busy}
+              onClick={() => setAmount(clampRound(amount + step, options.minBetTo, options.maxBetTo))}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-lg font-black text-white/80 transition hover:border-orange-300/40 hover:text-white disabled:opacity-40"
+            >
+              +
+            </button>
           </div>
+          <Slider
+            aria-label="Bet amount"
+            min={options.minBetTo}
+            max={options.maxBetTo}
+            step={1}
+            value={[amount]}
+            onValueChange={([v]) => setAmount(clampRound(v, options.minBetTo, options.maxBetTo))}
+            className="mx-auto w-full max-w-md"
+          />
           <div className="flex flex-wrap justify-center gap-1.5">
             {quickSizes.map((q) => (
               <button
@@ -150,17 +185,41 @@ export function ActionBar({ options, bigBlind, pot, currentBet, busy, secondsLef
                 type="button"
                 onClick={() => setAmount(q.to)}
                 className={cn(
-                  'min-h-8 rounded-md border border-white/10 bg-white/5 px-3 text-[11px] font-semibold text-white/80',
-                  'transition hover:border-amber-300/50 hover:bg-amber-400/10 hover:text-amber-200',
+                  'min-h-8 rounded-lg border border-white/10 bg-white/5 px-3 text-[11px] font-bold text-white/75',
+                  'transition hover:border-orange-300/50 hover:bg-orange-400/10 hover:text-orange-200',
                 )}
               >
                 {q.label}
               </button>
             ))}
           </div>
-          <p className="text-center text-[10px] text-white/35">
+          <p className="text-center text-[10px] text-white/30">
             Blinds {formatChips(bigBlind / 2)}/{formatChips(bigBlind)} · shortcuts: F fold · C check/call · R raise
           </p>
+        </div>
+      )}
+
+      {/* balance pill — sample-style, real lobby balance + free top-up */}
+      {balance != null && (
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-2 rounded-xl border border-orange-300/25 bg-black/40 px-3 py-1.5">
+            <span className="text-[9px] font-black uppercase tracking-[0.14em] text-white/40">Balance</span>
+            <span className="flex items-center gap-1 text-sm font-black tabular-nums text-orange-100">
+              <Coins className="h-3.5 w-3.5 text-orange-300" aria-hidden />
+              {formatChips(balance)}
+            </span>
+            {onTopUp && (
+              <button
+                type="button"
+                onClick={onTopUp}
+                aria-label="Claim free chips"
+                title="Claim free chips (available below 1,000)"
+                className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-b from-orange-400 to-orange-600 text-slate-950 transition hover:brightness-110"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </span>
         </div>
       )}
     </div>

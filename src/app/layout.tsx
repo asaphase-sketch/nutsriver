@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NutsRiver — Play-Money Poker",
+  title: "nutsriver — play-money poker",
   description:
     "Free play-money online poker. No-Limit Texas Hold'em with fair crypto-secure shuffling, live tables, house bots, chat and hand history. No real money, ever.",
   keywords: ["play-money poker", "texas holdem", "free poker", "online poker", "practice poker"],
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0c1512",
+  themeColor: "#120a08",
   width: "device-width",
   initialScale: 1,
 };
@@ -35,7 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0c1512] text-foreground`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#120a08] text-foreground`}
       >
         {children}
         <Toaster />

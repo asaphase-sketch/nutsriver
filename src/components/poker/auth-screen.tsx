@@ -26,8 +26,8 @@ export function AuthScreen({ poker }: AuthScreenProps) {
           Free to play · No real money · Ever
         </div>
         <h1 className="font-serif text-4xl font-black leading-tight text-white sm:text-5xl">
-          NutsRiver
-          <span className="mt-1 block bg-gradient-to-r from-emerald-300 via-amber-200 to-amber-400 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">
+          nuts<span className="text-orange-400">river</span>
+          <span className="mt-1 block bg-gradient-to-r from-amber-200 via-orange-300 to-orange-500 bg-clip-text text-2xl font-bold text-transparent sm:text-3xl">
             Play-Money Poker
           </span>
         </h1>

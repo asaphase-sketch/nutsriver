@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
-import { ArrowLeft, Coins, LogOut, Pause, Play, Palette, PlusCircle, RotateCw, Trophy, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, Coins, Diamond, LogOut, Pause, Play, Palette, PlusCircle, RotateCw, Trophy, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips, PHASE_LABEL } from '@/lib/poker/cards'
 import { seatAnchor, towardCenter } from '@/lib/poker/layout'
@@ -18,7 +18,7 @@ import { PlayingCard, toggleFourColor } from './playing-card'
 import { RebuyDialog } from './rebuy-dialog'
 import { Seat, BetChip } from './seat'
 import { SeatDialog } from './seat-dialog'
-import { SidePanel } from './side-panel'
+import { HandLogPanel, LastHandPanel, TableChatPanel, TableInfoPanel, TableStatsPanel } from './table-panels'
 
 interface TableViewProps {
   poker: PokerClient
@@ -170,6 +170,11 @@ export function TableView({ poker, view }: TableViewProps) {
   const levelRemainSec = myTourney?.levelEndsAt
     ? Math.max(0, Math.floor((myTourney.levelEndsAt - now) / 1000))
     : 0
+  const levelLabel = myTourney?.blinds
+    ? `${formatChips(myTourney.blinds.sb)} / ${formatChips(myTourney.blinds.bb)}`
+    : undefined
+  // live lobby counters for this table (avg pot etc. — real DO metrics)
+  const lobbyInfo = poker.lobbyTables.find((t) => t.tableKey === view.tableKey)
 
   // pot chip stack tier for the center visual
   const potTier = view.pot >= view.bigBlind * 50 ? 3 : view.pot >= view.bigBlind * 10 ? 2 : view.pot > 0 ? 1 : 0
@@ -234,28 +239,29 @@ export function TableView({ poker, view }: TableViewProps) {
   }, [view.seats, view.phase, view.maxSeats, rotation])
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
-      {/* table header */}
+    <div className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+      {/* table header — brand pill · game info pill · controls */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-white/70 hover:text-white"
+        <button
+          type="button"
           onClick={() => poker.setActiveTable(null)}
+          className="flex items-center gap-1.5 rounded-full border border-orange-300/25 bg-black/30 px-3 py-1.5 text-xs font-bold text-white/80 transition hover:border-orange-300/50 hover:text-white"
         >
-          <ArrowLeft className="mr-1 h-4 w-4" /> Lobby
-        </Button>
-        <h1 className="text-sm font-bold text-white sm:text-base">{view.name}</h1>
-        <span className="rounded bg-gradient-to-b from-amber-400/25 to-amber-600/20 px-2 py-0.5 text-[11px] font-bold tracking-wide text-amber-200 ring-1 ring-amber-300/40">
-          {GAME_LABEL[gameType]}
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Lobby
+        </button>
+        <span className="flex items-center gap-1.5 rounded-full border border-orange-300/30 bg-gradient-to-b from-orange-500/15 to-transparent px-3 py-1.5">
+          <Diamond className="h-3.5 w-3.5 fill-orange-400 text-orange-400" aria-hidden />
+          <span className="text-xs font-black lowercase tracking-wide text-white">nutsriver</span>
         </span>
-        <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">
-          {formatChips(view.smallBlind)}/{formatChips(view.bigBlind)}
+        <h1 className="hidden text-sm font-bold text-white sm:block">{view.name}</h1>
+        <span className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-bold text-orange-200 ring-1 ring-orange-300/25">
+          {GAME_LABEL[gameType]} · {formatChips(view.smallBlind)}/{formatChips(view.bigBlind)}
         </span>
-        <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/60">
+        <span className="hidden items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/60 ring-1 ring-white/10 sm:flex">
+          {poker.connected ? <Wifi className="h-3 w-3 text-emerald-400" aria-hidden /> : <WifiOff className="h-3 w-3 text-rose-400" aria-hidden />}
           Hand #{view.handNumber || '—'} · {PHASE_LABEL[view.phase]}
         </span>
-        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1 sm:gap-2">
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1 sm:gap-1.5">
           {canRotate && (
             <Button
               variant="ghost"
@@ -322,16 +328,29 @@ export function TableView({ poker, view }: TableViewProps) {
         </div>
       </div>
 
-      <div className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {/* felt */}
-        <section className="flex min-w-0 flex-col gap-3">
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[248px_minmax(0,1fr)_276px]">
+        {/* LEFT column — chat / last hand / stats / log (desktop-first order) */}
+        <aside className="order-3 flex min-h-0 flex-col gap-3 xl:order-1 xl:sticky xl:top-[4.5rem] xl:max-h-[calc(100dvh-6rem)] xl:overflow-y-auto xl:pr-0.5">
+          <TableChatPanel
+            messages={poker.chats[view.tableKey] ?? []}
+            onSend={(t) => poker.sendChat(view.tableKey, t)}
+            className="h-52 shrink-0 xl:h-auto xl:min-h-[190px] xl:flex-1"
+          />
+          <LastHandPanel view={view} className="shrink-0" />
+          <TableStatsPanel view={view} lobby={lobbyInfo} className="shrink-0" />
+          <HandLogPanel view={view} className="hidden h-64 shrink-0 xl:flex xl:min-h-[10rem]" />
+        </aside>
+
+        {/* CENTER — the felt + action bar */}
+        <section className="order-1 flex min-w-0 flex-col gap-3 xl:order-2">
+          {/* rail (border + neon rim) wraps the felt surface — separate elements
+              because .rail-2's background shorthand would clobber the felt
+              gradients if both landed on one element */}
           <div
             ref={feltRef}
-            className={cn(
-              'felt felt-2 felt-watermark felt-short relative w-full select-none overflow-hidden shadow-2xl shadow-black/60 aspect-[4/4.6] sm:aspect-[16/10.5]',
-              'rail-2',
-            )}
+            className="rail-2 felt-short relative aspect-[4/4.6] w-full select-none sm:aspect-[16/10.5]"
           >
+          <div className="felt felt-2 felt-watermark absolute inset-0 overflow-hidden rounded-[1.5rem] shadow-2xl shadow-black/60">
             {/* tournament strip */}
             {tournament && (
               <div className="absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-300/40 bg-black/55 px-3 py-1 text-[10px] font-semibold text-amber-200 shadow-lg backdrop-blur-sm sm:text-xs">
@@ -435,22 +454,18 @@ export function TableView({ poker, view }: TableViewProps) {
                   const empty = view.seats.find((s) => s.status === 'EMPTY')
                   if (empty) setSeatDialogFor(empty.seatIndex)
                 }}
-                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-gradient-to-b from-amber-400 to-amber-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-950 shadow-lg ring-1 ring-amber-300/60 transition hover:brightness-110"
+                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-gradient-to-b from-orange-400 to-orange-600 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-950 shadow-lg shadow-orange-900/40 ring-1 ring-orange-300/60 transition hover:brightness-110"
               >
                 Take a seat
               </button>
             )}
             {!isSeated && tournament && (
-              <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/55 px-4 py-1.5 text-xs font-semibold text-amber-200/90 ring-1 ring-amber-300/30">
+              <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/55 px-4 py-1.5 text-xs font-semibold text-orange-200/90 ring-1 ring-orange-300/30">
                 Spectating — your seat is assigned when you register
               </div>
             )}
           </div>
-
-          {/* live hand evaluator for own cards */}
-          {isSeated && (
-            <HandStrength selfCards={view.selfCards} board={view.board} gameType={gameType} />
-          )}
+          </div>
 
           {/* action bar or waiting hint — the bar is sticky so Fold/Check/Raise
               stay reachable on phones even while scrolled to chat/history */}
@@ -463,6 +478,8 @@ export function TableView({ poker, view }: TableViewProps) {
                 currentBet={view.currentBet}
                 busy={busy}
                 secondsLeft={secondsLeft}
+                balance={poker.chips}
+                onTopUp={() => poker.claimFreeChips()}
                 onAction={doAction}
               />
             </div>
@@ -483,15 +500,41 @@ export function TableView({ poker, view }: TableViewProps) {
           )}
         </section>
 
-        {/* side panel — desktop */}
-        <aside className="hidden min-h-[420px] lg:flex lg:flex-col">
-          <SidePanel view={view} messages={poker.chats[view.tableKey] ?? []} onSend={(t) => poker.sendChat(view.tableKey, t)} />
+        {/* RIGHT column — table info + your seat (order-2: felt first on mobile) */}
+        <aside className="order-2 flex min-h-0 flex-col gap-3 xl:order-3 xl:sticky xl:top-[4.5rem] xl:max-h-[calc(100dvh-6rem)] xl:overflow-y-auto xl:pl-0.5">
+          <TableInfoPanel
+            view={view}
+            tourneyName={myTourney?.name}
+            playersLeft={myTourney?.playersLeft}
+            levelLabel={levelLabel}
+            className="shrink-0"
+          />
+          <div className="neon-panel shrink-0 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-orange-200/90">Your seat</p>
+                <p className="mt-0.5 text-lg font-black tabular-nums text-white">{formatChips(self?.stack ?? poker.chips)}</p>
+                <p className="text-[10px] text-white/40">{isSeated ? 'table stack' : 'lobby balance'}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1.5">
+                <span className="flex items-center gap-1 rounded-full border border-orange-300/25 bg-black/30 px-2 py-0.5 text-[11px] font-bold tabular-nums text-orange-100">
+                  <Coins className="h-3 w-3 text-orange-300" aria-hidden />
+                  {formatChips(poker.chips)}
+                </span>
+                {canRebuy && (
+                  <button
+                    type="button"
+                    onClick={() => setRebuyOpen(true)}
+                    className="rounded-full bg-gradient-to-b from-orange-400 to-orange-600 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-slate-950 shadow-md shadow-orange-900/40 transition hover:brightness-110"
+                  >
+                    Top up
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          {isSeated && <HandStrength selfCards={view.selfCards} board={view.board} gameType={gameType} className="w-full shrink-0" />}
         </aside>
-      </div>
-
-      {/* side panel — mobile */}
-      <div className={cn('h-72 lg:hidden')}>
-        <SidePanel view={view} messages={poker.chats[view.tableKey] ?? []} onSend={(t) => poker.sendChat(view.tableKey, t)} />
       </div>
 
       {view.seats[seatDialogFor ?? 0] && seatDialogFor != null && (

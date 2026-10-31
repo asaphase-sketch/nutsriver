@@ -64,8 +64,7 @@ export function PlayingCard({ code, faceDown, size = 'md', className, animate, f
         aria-hidden
         style={delayStyle}
         className={cn(
-          'card-back select-none border border-emerald-950/70 shadow-md shadow-black/40',
-          'bg-[linear-gradient(135deg,#0f766e_0%,#134e4a_45%,#0b3d38_100%)]',
+          'card-back select-none border border-rose-950/70 shadow-md shadow-black/40',
           sizeCls,
           animate && 'card-deal',
           flip && 'card-flip',
@@ -119,7 +118,7 @@ export function PlayingCard({ code, faceDown, size = 'md', className, animate, f
         sizeCls,
         animate && 'card-deal',
         flip && 'card-flip',
-        highlight && 'card-win ring-2 ring-amber-300',
+        highlight && 'card-win ring-2 ring-orange-300',
         className,
       )}
       aria-label={`${parsed.rank} of ${parsed.suit === 's' ? 'spades' : parsed.suit === 'h' ? 'hearts' : parsed.suit === 'd' ? 'diamonds' : 'clubs'}`}
