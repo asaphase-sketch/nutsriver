@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
-import { ArrowLeft, Coins, Diamond, LogOut, Pause, Play, Palette, PlusCircle, RotateCw, Trophy, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react'
+import { ArrowLeft, Coins, Diamond, Flame, LogOut, Pause, Play, Palette, PlusCircle, RotateCw, Trophy, Users, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips, PHASE_LABEL } from '@/lib/poker/cards'
 import { seatAnchor, towardCenter } from '@/lib/poker/layout'
@@ -255,11 +255,23 @@ export function TableView({ poker, view }: TableViewProps) {
             nutsriver
           </span>
         </span>
+        {/* sample-style mode pill — ENERGY-TILT · N/9 · hand clock */}
+        <span className="hidden items-center gap-2 rounded-full border border-orange-300/30 bg-black/40 px-3.5 py-1.5 md:flex">
+          <span className="flex items-center gap-1 text-xs font-black uppercase tracking-widest text-orange-300">
+            <Flame className="h-3.5 w-3.5 fill-orange-500 text-orange-500" aria-hidden /> Energy-Tilt
+          </span>
+          <span className="h-3 w-px bg-white/15" aria-hidden />
+          <span className="flex items-center gap-1 text-[11px] font-bold text-white/70">
+            <Users className="h-3 w-3" aria-hidden /> {occupiedSeats.length}/{view.maxSeats}
+          </span>
+          <span className="h-3 w-px bg-white/15" aria-hidden />
+          <span className="text-[11px] font-bold tabular-nums text-white/70">Hand #{view.handNumber || '—'}</span>
+        </span>
         <h1 className="hidden text-sm font-bold text-white sm:block">{view.name}</h1>
         <span className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-bold text-orange-200 ring-1 ring-orange-300/25">
           {GAME_LABEL[gameType]} · {formatChips(view.smallBlind)}/{formatChips(view.bigBlind)}
         </span>
-        <span className="hidden items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/60 ring-1 ring-white/10 sm:flex">
+        <span className="hidden items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium text-white/60 ring-1 ring-white/10 sm:flex md:hidden">
           {poker.connected ? <Wifi className="h-3 w-3 text-emerald-400" aria-hidden /> : <WifiOff className="h-3 w-3 text-rose-400" aria-hidden />}
           Hand #{view.handNumber || '—'} · {PHASE_LABEL[view.phase]}
         </span>
@@ -348,13 +360,17 @@ export function TableView({ poker, view }: TableViewProps) {
           {/* rail (border + neon rim) wraps the felt surface — separate elements
               because .rail-2's background shorthand would clobber the felt
               gradients if both landed on one element */}
+        {/* oval halo wrapper — the sample's dark room lit from the felt */}
+        <div className="relative">
+          <div aria-hidden className="table-halo motion-reduce:hidden" />
           <div
             ref={feltRef}
-            className="rail-2 felt-short relative aspect-[4/4.6] w-full select-none sm:aspect-[16/10.5]"
+            className="rail-2 rail-oval felt-short relative aspect-[4/4.6] w-full select-none sm:aspect-[16/10.5]"
           >
-          <div className="felt felt-2 felt-watermark absolute inset-0 overflow-hidden rounded-[1.5rem] shadow-2xl shadow-black/60">
-            {/* ambient room light drifting over the cloth (pure decoration) */}
+          {/* felt is a pure background layer now — seats/cards ride the rail unclipped */}
+          <div aria-hidden className="felt felt-2 felt-watermark felt-oval absolute inset-0 overflow-hidden">
             <span aria-hidden className="felt-sheen motion-reduce:hidden" />
+          </div>
             {/* tournament strip */}
             {tournament && (
               <div className="absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-300/40 bg-black/55 px-3 py-1 text-[10px] font-semibold text-amber-200 shadow-lg backdrop-blur-sm sm:text-xs">
@@ -381,15 +397,16 @@ export function TableView({ poker, view }: TableViewProps) {
 
             {/* center: pot + board */}
             <div className="absolute left-1/2 top-1/2 z-0 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2">
-              <div className="flex items-center gap-2 rounded-full border border-amber-300/40 bg-black/45 px-3 py-1 shadow-lg backdrop-blur-sm">
+              <div className="flex items-center gap-2 rounded-full border border-amber-300/60 bg-black/50 px-3.5 py-1 shadow-[0_0_22px_rgba(255,150,60,0.3)] backdrop-blur-sm">
                 {/* chip stack tiers */}
                 <span className="relative inline-block h-3.5 w-4" aria-hidden>
                   {potTier >= 1 && <span className="chip chip-1" />}
                   {potTier >= 2 && <span className="chip chip-2" />}
                   {potTier >= 3 && <span className="chip chip-3" />}
                 </span>
-                <span className="text-xs font-bold tabular-nums text-amber-200 sm:text-sm">
-                  {view.pot > 0 ? formatChips(view.pot) : 'Pot empty'}
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-200/70">Pot</span>
+                  <span className="text-xs font-bold tabular-nums text-amber-100 sm:text-sm">{formatChips(view.pot)}</span>
                 </span>
               </div>
               <div className="flex gap-1 sm:gap-1.5">
@@ -397,10 +414,11 @@ export function TableView({ poker, view }: TableViewProps) {
                   <PlayingCard
                     key={`${view.handNumber}-${i}`}
                     code={view.board[i] ?? null}
-                    size="md"
+                    size="board"
                     animate={!!view.board[i]}
                     flip={!!view.board[i]}
                     highlight={!!view.board[i] && !!winCardCodes?.has(view.board[i]!)}
+                    className={!!view.board[i] ? 'shadow-[0_0_18px_rgba(255,150,70,0.22)]' : undefined}
                   />
                 ))}
               </div>
@@ -422,7 +440,7 @@ export function TableView({ poker, view }: TableViewProps) {
                       className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
                       style={{ left: `${betPos.x}%`, top: `${betPos.y}%` }}
                     >
-                      <BetChip amount={p.bet} />
+                      <BetChip amount={p.bet} bigBlind={view.bigBlind} />
                     </div>
                   )}
                   <div
@@ -469,7 +487,7 @@ export function TableView({ poker, view }: TableViewProps) {
               </div>
             )}
           </div>
-          </div>
+        </div>
 
           {/* action bar or waiting hint — the bar is sticky so Fold/Check/Raise
               stay reachable on phones even while scrolled to chat/history */}

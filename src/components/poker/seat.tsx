@@ -1,6 +1,6 @@
 'use client'
 
-import { Bot, WifiOff } from 'lucide-react'
+import { Bot, Crown, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatChips } from '@/lib/poker/cards'
 import type { ClientPlayerView } from '@/lib/poker/types'
@@ -98,7 +98,6 @@ export function Seat({
       <div
         className={cn(
           'z-10 flex gap-0.5',
-          !cardsBelow && '-mb-3',
           cardsBelow && '-mt-3 order-last',
         )}
       >
@@ -113,7 +112,10 @@ export function Seat({
                 delayMs={dealDelay(i)}
                 flip={!isSelf && player.cardsRevealed}
                 highlight={won && !folded && !!winCards?.has(c)}
-                className={cn(folded && 'grayscale')}
+                className={cn(
+                  isSelf && 'ring-1 ring-amber-300/60 shadow-[0_0_16px_rgba(251,191,36,0.3)]',
+                  folded && 'grayscale',
+                )}
               />
             ) : (
               <PlayingCard
@@ -122,17 +124,34 @@ export function Seat({
                 size={cardSize}
                 animate={dealNonce > 0}
                 delayMs={dealDelay(i)}
-                className={cn(folded && 'grayscale')}
+                className={cn(
+                  isSelf && 'ring-1 ring-amber-300/60',
+                  folded && 'grayscale',
+                )}
               />
             ),
           )
         ) : null}
       </div>
 
-      {/* name plate */}
+      {/* avatar — sample-style portrait circle riding the plate's top edge */}
+      <span
+        className={cn(
+          'z-10 -mb-3.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold uppercase shadow-lg shadow-black/50 sm:h-11 sm:w-11 sm:text-sm',
+          player.isBot
+            ? 'border-white/20 bg-gradient-to-b from-slate-700 to-slate-900 text-slate-300'
+            : 'border-orange-300/80 bg-gradient-to-b from-orange-500 to-orange-800 text-orange-50',
+          !player.connected && 'opacity-50',
+          isSelf && 'ring-2 ring-amber-300/70',
+        )}
+      >
+        {player.isBot ? <Bot className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden /> : player.name.charAt(0)}
+      </span>
+
+      {/* name column — floats on the rail like the sample (soft dark backdrop) */}
       <div
         className={cn(
-          'relative w-full overflow-hidden rounded-lg border bg-[#190e0b]/95 px-2 py-1.5 shadow-xl shadow-black/35 backdrop-blur-sm',
+          'relative w-full overflow-hidden rounded-xl border bg-[#160b08]/85 px-2 pb-1.5 pt-4 shadow-xl shadow-black/35 backdrop-blur-sm',
           'transition-[border-color,box-shadow,background-color] duration-700 ease-out',
           isActor ? 'border-orange-300/90 shadow-orange-500/20' : 'border-white/10',
           isSelf && 'ring-1 ring-orange-300/70',
@@ -151,48 +170,37 @@ export function Seat({
           </div>
         )}
 
-        <div className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase sm:h-7 sm:w-7 sm:text-xs',
-              player.isBot ? 'bg-slate-700 text-slate-300' : 'bg-gradient-to-b from-orange-500 to-orange-800 text-orange-50',
-              !player.connected && 'opacity-50',
-            )}
-          >
-            {player.isBot ? <Bot className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden /> : player.name.charAt(0)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <span className="truncate text-[10px] font-semibold text-white/90 sm:text-xs" title={player.name}>
-                {player.name}
-              </span>
-              {!player.connected && <WifiOff className="h-2.5 w-2.5 shrink-0 text-rose-400" aria-label="disconnected" />}
-            </div>
-            <div className={cn('font-medium tabular-nums text-orange-200/90', isSelf ? 'text-[11px] sm:text-sm' : 'text-[9px] sm:text-[11px]')}>
-              {formatChips(player.stack)}
-            </div>
-          </div>
-          {/* numeric seconds badge */}
-          {isActor && secondsLeft > 0 && (
-            <span
-              className={cn(
-                'ml-0.5 shrink-0 rounded px-1 py-0.5 text-[9px] font-black tabular-nums',
-                urgent ? 'bg-rose-600 text-white' : 'bg-amber-400/20 text-amber-200',
-              )}
-            >
-              {secondsLeft}s
+        <div className="flex min-w-0 flex-col items-center gap-0.5 text-center">
+          <div className="flex w-full items-center justify-center gap-1">
+            <span className="truncate text-[10px] font-semibold text-white/90 sm:text-xs" title={player.name}>
+              {player.name}
             </span>
-          )}
+            {!player.connected && <WifiOff className="h-2.5 w-2.5 shrink-0 text-rose-400" aria-label="disconnected" />}
+            {/* numeric seconds badge */}
+            {isActor && secondsLeft > 0 && (
+              <span
+                className={cn(
+                  'shrink-0 rounded px-1 py-0.5 text-[9px] font-black tabular-nums',
+                  urgent ? 'bg-rose-600 text-white' : 'bg-amber-400/20 text-amber-200',
+                )}
+              >
+                {secondsLeft}s
+              </span>
+            )}
+          </div>
+          <div className={cn('font-medium tabular-nums text-orange-200/90', isSelf ? 'text-[11px] sm:text-sm' : 'text-[9px] sm:text-[11px]')}>
+            {formatChips(player.stack)}
+          </div>
         </div>
 
         {/* badges row */}
-        <div className="mt-1 flex flex-wrap items-center gap-1">
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-1">
           {player.isDealer && (
             <span
-              className="dealer-puck flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-black text-slate-900"
+              className="dealer-puck flex h-4 w-4 items-center justify-center rounded-full text-[#5b3a06]"
               title="Dealer"
             >
-              D
+              <Crown className="h-2.5 w-2.5" aria-hidden />
             </span>
           )}
           {player.isSmallBlind && (
@@ -249,9 +257,12 @@ export function Seat({
   )
 }
 
-/** Chip pill showing a player's current street bet, floating toward the pot. */
-export function BetChip({ amount }: { amount: number }) {
+/** Chip pill showing a player's current street bet — gold/red/purple by size. */
+export function BetChip({ amount, bigBlind }: { amount: number; bigBlind?: number }) {
   if (amount <= 0) return null
+  const bb = bigBlind ?? 0
+  const variant =
+    bb > 0 && amount >= bb * 20 ? 'bet-chip-purple' : bb > 0 && amount >= bb * 5 ? 'bet-chip-red' : 'bet-chip-3d'
   return (
     <span
       className={cn(
@@ -259,7 +270,7 @@ export function BetChip({ amount }: { amount: number }) {
         'text-[9px] font-bold tabular-nums text-amber-200 shadow-md shadow-black/50 sm:text-[10px]',
       )}
     >
-      <span className="bet-chip-3d" aria-hidden />
+      <span className={variant} aria-hidden />
       {formatChips(amount)}
     </span>
   )

@@ -22,16 +22,14 @@ export interface SeatAnchor {
 }
 
 /**
- * Anchor clamps for seat plates.
+ * Anchor clamps for seat columns.
  *
- * Seat plates are ~100px wide/~100px tall and centered on their anchor.
- * On a phone the felt is only ~366×420px, so an anchor at x=4.7% (9-max,
- * φ=280°) pushed the plate past the felt edge and got clipped by the felt's
- * overflow-hidden. Clamping X into [14, 86] keeps the plate fully inside at
- * phone widths while barely moving seats on desktop (14% of a 1100px felt is
- * 154px — visually still an oval ring). Y is clamped to [18, 88] for the
- * same reason: plates must survive short landscape felts and the self plate
- * must not graze the bottom rail in portrait.
+ * Seats now ride the rail like the sample image (avatar over the plate edge)
+ * and the felt background layer no longer clips them — but the clamps still
+ * earn their keep: a ~100px-wide seat column centered on a 366px phone felt
+ * must stay fully inside the rail box, which pins X to [14, 86] (14% of 366px
+ * is 51px — exactly half a 100px column). Y stays [18, 88] so short landscape
+ * felts and the self plate clear the bottom rail in portrait.
  */
 const SEAT_X_MIN = 14
 const SEAT_X_MAX = 86

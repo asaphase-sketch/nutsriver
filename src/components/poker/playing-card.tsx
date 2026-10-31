@@ -5,13 +5,15 @@ import { cn } from '@/lib/utils'
 import { isRedSuit, splitCard, suitSymbol } from '@/lib/poker/cards'
 import { getFourColor, setFourColor as setFourColorPref, subscribeFourColor } from '@/lib/poker/four-color'
 
-type CardSize = 'xs' | 'sm' | 'md' | 'lg'
+type CardSize = 'xs' | 'sm' | 'md' | 'lg' | 'board'
 
 const SIZE_CLASSES: Record<CardSize, string> = {
   xs: 'w-7 h-10 rounded text-[10px]',
   sm: 'w-9 h-[3.25rem] rounded-md text-xs',
   md: 'w-11 h-16 rounded-md text-sm',
   lg: 'w-14 h-20 rounded-lg text-base',
+  // board runout — small on phones, sample-sized from sm up
+  board: 'w-9 h-[3.4rem] rounded-md text-xs sm:w-14 sm:h-20 sm:rounded-lg sm:text-base',
 }
 
 const CENTER_SUIT: Record<CardSize, string> = {
@@ -19,6 +21,7 @@ const CENTER_SUIT: Record<CardSize, string> = {
   sm: 'text-lg',
   md: 'text-2xl',
   lg: 'text-3xl',
+  board: 'text-lg sm:text-3xl',
 }
 
 const RANK_SIZE: Record<CardSize, string> = {
@@ -26,6 +29,7 @@ const RANK_SIZE: Record<CardSize, string> = {
   sm: 'text-[13px]',
   md: 'text-[17px]',
   lg: 'text-xl',
+  board: 'text-[13px] sm:text-xl',
 }
 
 const CORNER_PIP: Record<CardSize, string> = {
@@ -33,6 +37,7 @@ const CORNER_PIP: Record<CardSize, string> = {
   sm: 'text-[10px]',
   md: 'text-[12px]',
   lg: 'text-sm',
+  board: 'text-[10px] sm:text-sm',
 }
 
 interface PlayingCardProps {
