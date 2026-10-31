@@ -52,8 +52,9 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           sha256sum "$RUNNER_TEMP/nutsriver-release.keystore"
-          echo "store pw length: $(printf %s "$KEYSTORE_PASSWORD" | wc -c)"
-          echo "key pw length: $(printf %s "$KEY_PASSWORD" | wc -c)"
+          echo "sha256(store pw):  $(printf %s "$KEYSTORE_PASSWORD" | sha256sum | cut -d' ' -f1)"
+          echo "sha256(key pw):    $(printf %s "$KEY_PASSWORD" | sha256sum | cut -d' ' -f1)"
+          echo "sha256(alias):     $(printf %s "$KEY_ALIAS" | sha256sum | cut -d' ' -f1)"
 
       - name: Build release APK + AAB
         working-directory: android
