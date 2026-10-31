@@ -1,0 +1,9 @@
+# Build outputs
+.gradle/
+build/
+app/build/
+
+# Local Android Studio files
+local.properties
+.idea/
+*.iml
