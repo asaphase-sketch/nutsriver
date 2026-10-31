@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Coins, Diamond, KeyRound, Loader2, LogOut, Shield, Spade, Wifi, WifiOff } from 'lucide-react'
 import { formatChips } from '@/lib/poker/cards'
 import { usePoker } from '@/hooks/use-poker'
@@ -25,9 +25,26 @@ import {
 import { AuthScreen } from '@/components/poker/auth-screen'
 import { Lobby } from '@/components/poker/lobby'
 import { TableView } from '@/components/poker/table-view'
+import { PwaInstaller } from '@/components/pwa/pwa-installer'
 
 export default function Home() {
   const poker = usePoker()
+
+  // Android home-screen shortcuts (manifest.webmanifest → shortcuts) land on
+  // '/?screen=lobby' or '/?claim=chips' — act on them once, after login, and
+  // clean the URL so reloads don't re-trigger.
+  const shortcutHandledRef = useRef(false)
+  useEffect(() => {
+    if (shortcutHandledRef.current || !poker.authChecked || !poker.user) return
+    const params = new URLSearchParams(window.location.search)
+    const screen = params.get('screen')
+    const claim = params.get('claim')
+    if (!screen && !claim) return
+    shortcutHandledRef.current = true
+    if (screen === 'lobby') poker.setActiveTable(null)
+    else if (claim === 'chips') poker.claimFreeChips()
+    window.history.replaceState(null, '', window.location.pathname)
+  }, [poker.authChecked, poker.user, poker.setActiveTable, poker.claimFreeChips])
 
   return (
     <div className="flex min-h-screen flex-col bg-[#120a08] text-white">
@@ -47,6 +64,8 @@ export default function Home() {
           <Lobby poker={poker} />
         )}
       </main>
+
+      <PwaInstaller paused={!!poker.activeTable} />
 
       <footer className="mt-auto border-t border-white/5 py-4">
         <p className="px-4 text-center text-[11px] leading-relaxed text-white/35">

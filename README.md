@@ -79,6 +79,15 @@ bun run e2e                # full E2E over raw WebSocket against a running `wran
 
 CI (GitHub Actions) runs all of the above on every push and PR.
 
+### Install as an app (PWA)
+
+The site is an installable Progressive Web App — no app store needed:
+
+- **Android (Chrome):** open the site, tap **⋮ → Install app** (or the in-app *Install NutsRiver* pill). The icon lands on the home screen and the game runs fullscreen in its own window, status bar tinted to the table theme. Long-press the icon for **Open lobby** / **Free chips** shortcuts.
+- **iOS (Safari):** open the site, tap **Share → Add to Home Screen**.
+
+The offline shell (service worker) keeps the app openable with no connection and shows a "you're offline" banner; table sockets reconnect automatically once the network is back. `public/sw.js` caches only static assets and the app shell — `/api/*` and all WebSocket traffic stay live-only. Bump the `VERSION` constant in `sw.js` when renaming cached files.
+
 ## Deploy to Cloudflare (free plan)
 
 ```bash
