@@ -16,7 +16,7 @@ def signingReady = keystorePath != null && keystorePass != null && keyAliasVal !
 
 android {
     namespace 'dev.nutsriver.twa'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId 'dev.nutsriver.twa'
