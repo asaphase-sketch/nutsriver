@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "dev.nutsriver.twa",
+      "sha256_cert_fingerprints": [
+        "16:3E:D2:05:D1:62:81:B5:53:A7:D8:0E:A3:9B:0D:72:F0:56:69:77:C3:F5:15:87:00:FA:2B:26:C6:8C:A4:1A"
+      ]
+    }
+  }
+]

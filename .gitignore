@@ -88,3 +88,12 @@ scripts/probe-clock.ts
 wrangler-ci.log
 worklog.md
 audit/
+
+# android / TWA build outputs + signing material (never commit keys)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.keystore
+*.jks
+*.keystore.b64

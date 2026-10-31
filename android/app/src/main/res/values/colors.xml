@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the site theme: deep ember brown -->
+    <color name="navigator_color">#120A08</color>
+    <color name="background_color">#120A08</color>
+    <color name="launcher_background">#120A08</color>
+</resources>

@@ -88,6 +88,14 @@ The site is an installable Progressive Web App — no app store needed:
 
 The offline shell (service worker) keeps the app openable with no connection and shows a "you're offline" banner; table sockets reconnect automatically once the network is back. `public/sw.js` caches only static assets and the app shell — `/api/*` and all WebSocket traffic stay live-only. Bump the `VERSION` constant in `sw.js` when renaming cached files.
 
+### Android app (TWA)
+
+`android/` is a Trusted Web Activity wrapper (`dev.nutsriver.twa`) around the same site — a real APK with the launcher icon, splash screen and no browser bar (via Digital Asset Links: `public/.well-known/assetlinks.json` ↔ the app's signing certificate).
+
+- **No local tooling needed:** the [Android workflow](./.github/workflows/android.yml) builds a signed **release APK + AAB** on every push that touches `android/**` and uploads them as the `nutsriver-twa-release` artifact — download from the Actions run page and sideload.
+- **Signing:** release signing material lives only in the four repo secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) and in the owner's offline keystore backup. Never commit `*.keystore` (gitignored).
+- Changing the app id or signing key requires updating `strings.xml` (asset statements), `assetlinks.json` and the secrets together — the Play-Store-visible package id is permanent once published.
+
 ## Deploy to Cloudflare (free plan)
 
 ```bash

@@ -1,0 +1,64 @@
+// NutsRiver TWA — Trusted Web Activity wrapping the Cloudflare-hosted site.
+//
+// The APK is built by .github/workflows/android.yml. Signing material comes
+// from environment variables (GitHub Actions secrets); without them the
+// release build stays unsigned (installable via "adb install -t" only).
+plugins {
+    id 'com.android.application'
+}
+
+def keystorePath = System.getenv('KEYSTORE_FILE')
+def keystorePass = System.getenv('KEYSTORE_PASSWORD')
+def keyAliasVal = System.getenv('KEY_ALIAS')
+def keyPass = System.getenv('KEY_PASSWORD')
+def signingReady = keystorePath != null && keystorePass != null && keyAliasVal != null && keyPass != null \
+        && file(keystorePath).exists() && file(keystorePath).length() > 0
+
+android {
+    namespace 'dev.nutsriver.twa'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'dev.nutsriver.twa'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            if (signingReady) {
+                storeFile file(keystorePath)
+                storePassword keystorePass
+                keyAlias keyAliasVal
+                keyPassword keyPass
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (signingReady) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        // lintVitalRelease must not block artifact builds; CI covers site linting.
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:browserhelper:2.5.2'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+}
