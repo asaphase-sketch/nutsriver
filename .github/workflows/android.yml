@@ -46,6 +46,15 @@ jobs:
             echo "::warning::ANDROID_KEYSTORE_BASE64 secret missing — the release build will be unsigned"
           fi
 
+      - name: Debug signing inputs (temporary)
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          sha256sum "$RUNNER_TEMP/nutsriver-release.keystore"
+          echo "store pw length: $(printf %s "$KEYSTORE_PASSWORD" | wc -c)"
+          echo "key pw length: $(printf %s "$KEY_PASSWORD" | wc -c)"
+
       - name: Build release APK + AAB
         working-directory: android
         env:
