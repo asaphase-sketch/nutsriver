@@ -532,28 +532,38 @@ button,
     0 2px 4px rgba(0, 0, 0, 0.45);
 }
 
-/* mini 3D bet chips used inside bet pills — gold by default, with red and
-   purple variants so big bets read at a glance (sample's colorful chips) */
+/* mini 3D bet chips used inside bet pills — each renders as a tiny 3-chip
+   stack (box-shadow layers), gold/red/purple by bet size (sample's chips) */
 .bet-chip-3d,
 .bet-chip-red,
 .bet-chip-purple {
   width: 11px;
   height: 11px;
   border-radius: 9999px;
-  box-shadow:
-    0 -2px 0 rgba(0, 0, 0, 0.35),
-    0 -2px 0 1px rgba(255, 255, 255, 0.25),
-    inset 0 0 0 1.5px rgba(255, 255, 255, 0.55),
-    0 1px 2px rgba(0, 0, 0, 0.55);
 }
 .bet-chip-3d {
   background: radial-gradient(circle at 35% 30%, #fde68a 0 30%, #f59e0b 55%, #92400e 100%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 -3px 0 #92400e, 0 -3px 0 1px rgba(255, 255, 255, 0.22),
+    0 -6px 0 #b45309, 0 -6px 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
 }
 .bet-chip-red {
   background: radial-gradient(circle at 35% 30%, #fecaca 0 30%, #ef4444 55%, #7f1d1d 100%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 -3px 0 #7f1d1d, 0 -3px 0 1px rgba(255, 255, 255, 0.22),
+    0 -6px 0 #991b1b, 0 -6px 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
 }
 .bet-chip-purple {
   background: radial-gradient(circle at 35% 30%, #e9d5ff 0 30%, #a855f7 55%, #4c1d95 100%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 -3px 0 #4c1d95, 0 -3px 0 1px rgba(255, 255, 255, 0.22),
+    0 -6px 0 #6d28d9, 0 -6px 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
 }
 
 /* ---------- pot chip stack (center of the felt) ---------- */
